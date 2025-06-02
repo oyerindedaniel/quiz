@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* Quiz Application Theme Colors */
+@theme inline {
+  /* Primary Brand Colors - Educational Blue */
+  --color-brand-50: oklch(0.98 0.02 240);
+  --color-brand-100: oklch(0.94 0.05 240);
+  --color-brand-200: oklch(0.88 0.1 240);
+  --color-brand-300: oklch(0.82 0.15 240);
+  --color-brand-400: oklch(0.74 0.2 240);
+  --color-brand-500: oklch(0.65 0.25 240);
+  --color-brand-600: oklch(0.55 0.22 240);
+  --color-brand-700: oklch(0.45 0.18 240);
+  --color-brand-800: oklch(0.35 0.14 240);
+  --color-brand-900: oklch(0.25 0.1 240);
+
+  /* Quiz State Colors */
+  --color-correct-50: oklch(0.97 0.02 140);
+  --color-correct-100: oklch(0.92 0.05 140);
+  --color-correct-200: oklch(0.86 0.1 140);
+  --color-correct-300: oklch(0.78 0.15 140);
+  --color-correct-400: oklch(0.68 0.2 140);
+  --color-correct-500: oklch(0.58 0.22 140);
+  --color-correct-600: oklch(0.48 0.18 140);
+  --color-correct-700: oklch(0.38 0.14 140);
+
+  --color-incorrect-50: oklch(0.97 0.02 20);
+  --color-incorrect-100: oklch(0.92 0.05 20);
+  --color-incorrect-200: oklch(0.86 0.1 20);
+  --color-incorrect-300: oklch(0.78 0.15 20);
+  --color-incorrect-400: oklch(0.68 0.2 20);
+  --color-incorrect-500: oklch(0.58 0.22 20);
+  --color-incorrect-600: oklch(0.48 0.18 20);
+  --color-incorrect-700: oklch(0.38 0.14 20);
+
+  --color-pending-50: oklch(0.97 0.02 80);
+  --color-pending-100: oklch(0.92 0.05 80);
+  --color-pending-200: oklch(0.86 0.1 80);
+  --color-pending-300: oklch(0.78 0.15 80);
+  --color-pending-400: oklch(0.68 0.2 80);
+  --color-pending-500: oklch(0.58 0.22 80);
+  --color-pending-600: oklch(0.48 0.18 80);
+  --color-pending-700: oklch(0.38 0.14 80);
+
+  /* Quiz Progress Colors */
+  --color-progress-50: oklch(0.97 0.02 280);
+  --color-progress-100: oklch(0.92 0.05 280);
+  --color-progress-200: oklch(0.86 0.1 280);
+  --color-progress-300: oklch(0.78 0.15 280);
+  --color-progress-400: oklch(0.68 0.2 280);
+  --color-progress-500: oklch(0.58 0.22 280);
+  --color-progress-600: oklch(0.48 0.18 280);
+  --color-progress-700: oklch(0.38 0.14 280);
+
+  /* Quiz Option States */
+  --color-selected-50: oklch(0.97 0.02 200);
+  --color-selected-100: oklch(0.92 0.05 200);
+  --color-selected-200: oklch(0.86 0.1 200);
+  --color-selected-300: oklch(0.78 0.15 200);
+  --color-selected-400: oklch(0.68 0.2 200);
+  --color-selected-500: oklch(0.58 0.22 200);
+  --color-selected-600: oklch(0.48 0.18 200);
+  --color-selected-700: oklch(0.38 0.14 200);
+
+  /* Essential UI Colors */
+  --color-white: oklch(1 0 0);
+  --color-gray-50: oklch(0.98 0.005 0);
+  --color-gray-100: oklch(0.96 0.01 0);
+  --color-gray-200: oklch(0.92 0.015 0);
+  --color-gray-300: oklch(0.86 0.02 0);
+  --color-gray-500: oklch(0.56 0.03 0);
+  --color-gray-700: oklch(0.32 0.02 0);
+  --color-gray-900: oklch(0.12 0.01 0);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Dark Mode Adjustments */
+@media (prefers-color-scheme: dark) {
+}
+/* Base body styling */
+body {
+}

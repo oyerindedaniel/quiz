@@ -1,0 +1,434 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Component Architecture
+
+## Component Organization
+
+### Feature-Based Structure
+
+- Organize code by feature rather than by type:
+
+```
+/features
+  /code-editor
+    /components
+      code-editor.tsx
+      syntax-highlighter.tsx
+    /hooks
+      use-editor-state.ts
+    /utils
+      parser.ts
+    code-editor-controller.ts
+    types.ts
+    index.ts
+```
+
+### Component Composition
+
+- Break down UI into small, focused components
+- Prefer composition over inheritance
+- Follow the single responsibility principle
+
+```tsx
+// Prefer composition of small components
+const Visualization = () => (
+  <VisualizationContainer>
+    <CodeEditor />
+    <ControlPanel>
+      <ExecutionControls />
+      <VisualizationSettings />
+    </ControlPanel>
+    <VisualizationPanel>
+      <CallStackView />
+      <ScopeChainView />
+      <TimelineView />
+    </VisualizationPanel>
+  </VisualizationContainer>
+);
+```
+
+## Component Design Patterns
+
+### Presentational vs Container Components
+
+- **Presentational Components**: Focus on UI, receive data via props
+- **Container Components**: Handle state, data fetching, and business logic
+
+```tsx
+// Presentational component
+const ScopeChainView = ({ scopes, activeScope, onScopeSelect }) => (
+  <div className="rounded-lg border p-4">
+    {scopes.map(scope => (
+      <ScopeItem 
+        key={scope.id}
+        scope={scope}
+        isActive={scope.id === activeScope}
+        onSelect={() => onScopeSelect(scope.id)}
+      />
+    ))}
+  </div>
+);
+
+// Container component
+const ScopeChainContainer = () => {
+  const { scopes, activeScope } = useExecutionState();
+  const { selectScope } = useExecutionControls();
+  
+  return (
+    <ScopeChainView 
+      scopes={scopes}
+      activeScope={activeScope}
+      onScopeSelect={selectScope}
+    />
+  );
+};
+```
+
+### Custom Hooks
+
+- Extract reusable stateful logic into custom hooks
+- Name hooks with the `use` prefix
+- Keep hooks focused on a single concern
+
+```tsx
+// Custom hook for execution state
+const useExecutionState = () => {
+  const [currentNode, setCurrentNode] = useState<ASTNode | null>(null);
+  const [executionContext, setExecutionContext] = useState<ExecutionContext | null>(null);
+  const [callStack, setCallStack] = useState<CallStackFrame[]>([]);
+  
+  // Logic for updating state...
+  
+  return {
+    currentNode,
+    executionContext,
+    callStack,
+    // Methods to update state...
+  };
+};
+```
+
+### Compound Components
+
+- Use compound components for complex UI elements with multiple parts
+
+```tsx
+// Compound component example
+const Visualizer = {
+  Root: ({ children }) => <div className="flex h-full">{children}</div>,
+  Sidebar: ({ children }) => <div className="w-64 border-r">{children}</div>,
+  Content: ({ children }) => <div className="flex-1">{children}</div>,
+  Controls: ({ children }) => <div className="border-t p-4">{children}</div>,
+};
+
+// Usage
+const MyVisualizer = () => (
+  <Visualizer.Root>
+    <Visualizer.Sidebar>
+      <NavigationTree />
+    </Visualizer.Sidebar>
+    <Visualizer.Content>
+      <CodeDisplay />
+      <ExecutionView />
+    </Visualizer.Content>
+    <Visualizer.Controls>
+      <PlaybackControls />
+    </Visualizer.Controls>
+  </Visualizer.Root>
+);
+```
+
+## State Management
+
+### Local vs Global State
+
+- Use local state for component-specific concerns
+- Use context or Redux for shared state that affects multiple components
+- Keep state close to where it's used
+
+```tsx
+// Local component state
+const CodeEditor = () => {
+  const [code, setCode] = useState('');
+  
+  return (
+    <Editor 
+      value={code}
+      onChange={setCode}
+    />
+  );
+};
+
+// Global application state
+const ExecutionProvider = ({ children }) => {
+  // State that affects multiple components
+  const [ast, setAst] = useState(null);
+  const [executionState, setExecutionState] = useState({
+    currentNode: null,
+    callStack: [],
+    scopes: []
+  });
+  
+  // Provide state to component tree
+  return (
+    <ExecutionContext.Provider value={{ 
+      ast, 
+      executionState,
+      parseCode: (code) => { /* Update AST */ },
+      stepExecution: () => { /* Update execution state */ }
+    }}>
+      {children}
+    </ExecutionContext.Provider>
+  );
+};
+```
+
+### Context Organization
+
+- Create focused context providers for different domains
+- Compose providers for a clean component tree
+
+```tsx
+// Application with multiple providers
+const App = () => (
+  <ThemeProvider>
+    <AuthProvider>
+      <ExecutionProvider>
+        <UIStateProvider>
+          <MainLayout />
+        </UIStateProvider>
+      </ExecutionProvider>
+    </AuthProvider>
+  </ThemeProvider>
+);
+```
+
+## Props Management
+
+### Props API Design
+
+- Design component APIs with clear, consistent props
+- Use sensible defaults
+- Provide appropriate prop types
+
+```tsx
+interface ButtonProps {
+  variant?: 'primary' | 'secondary' | 'outline';
+  size?: 'sm' | 'md' | 'lg';
+  isLoading?: boolean;
+  isDisabled?: boolean;
+  icon?: React.ReactNode;
+  onClick?: () => void;
+  children: React.ReactNode;
+}
+
+const Button = ({ 
+  variant = 'primary',
+  size = 'md',
+  isLoading = false,
+  isDisabled = false,
+  icon,
+  onClick,
+  children
+}: ButtonProps) => {
+  // Implementation
+};
+```
+
+### Props Spreading
+
+- Avoid excessive props spreading which obscures the component API
+- Be explicit about which props are passed to which components
+
+```tsx
+// Avoid this pattern
+const Button = (props) => <button {...props} />;
+
+// Prefer this pattern
+const Button = ({ className, children, ...rest }) => (
+  <button 
+    className={`btn ${className}`}
+    {...rest}
+  >
+    {children}
+  </button>
+);
+```
+
+## Performance Optimizations
+
+### Memoization
+
+- Use React.memo for expensive rendering components
+- Use useMemo for expensive computations
+- Use useCallback for callback functions passed as props
+
+```tsx
+// Memoize component
+const ASTNodeVisualizer = React.memo(({ node, depth }) => {
+  // Rendering logic
+});
+
+// Memoize expensive computation
+const ComplexComponent = ({ data }) => {
+  const processedData = useMemo(() => {
+    return expensiveComputation(data);
+  }, [data]);
+  
+  // Rendering using processedData
+};
+```
+
+### Virtualization
+
+- Use virtualization for large lists (ASTNode tree, execution timeline)
+- Consider using react-window or react-virtualized
+
+```tsx
+import { FixedSizeList } from 'react-window';
+
+const ExecutionTimeline = ({ steps }) => (
+  <FixedSizeList
+    height={400}
+    width="100%"
+    itemCount={steps.length}
+    itemSize={40}
+  >
+    {({ index, style }) => (
+      <TimelineStep 
+        step={steps[index]}
+        style={style}
+      />
+    )}
+  </FixedSizeList>
+);
+```
+
+## Code Composition and Reuse
+
+### Higher-Order Components (HOCs)
+
+- Use HOCs for cross-cutting concerns
+- Keep HOCs simple and focused
+- Compose multiple HOCs using composition
+
+```tsx
+// HOC example
+const withErrorBoundary = (Component) => {
+  return function WithErrorBoundary(props) {
+    return (
+      <ErrorBoundary fallback={<ErrorDisplay />}>
+        <Component {...props} />
+      </ErrorBoundary>
+    );
+  };
+};
+
+// Usage
+const SafeVisualization = withErrorBoundary(Visualization);
+```
+
+### Render Props
+
+- Use render props for flexible component composition
+
+```tsx
+// Render props example
+const ASTTraversal = ({ ast, children }) => {
+  const [currentNode, setCurrentNode] = useState(ast);
+  
+  const goToChild = (index) => {
+    setCurrentNode(currentNode.children[index]);
+  };
+  
+  return children({
+    currentNode,
+    goToChild,
+    goToParent: () => { /* Implementation */ }
+  });
+};
+
+// Usage
+<ASTTraversal ast={parsedAST}>
+  {({ currentNode, goToChild }) => (
+    <NodeVisualizer 
+      node={currentNode}
+      onChildSelect={goToChild}
+    />
+  )}
+</ASTTraversal>
+```
+
+## Accessibility
+
+- Ensure all components have appropriate ARIA attributes
+- Implement keyboard navigation
+- Test with screen readers
+- Ensure sufficient color contrast in both light and dark modes
+
+```tsx
+// Accessible button example
+const Button = ({ onClick, disabled, children }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    aria-disabled={disabled}
+    className={`py-2 px-4 rounded ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+  >
+    {children}
+  </button>
+);
+```
+
+## Documentation
+
+- Document all public functions, interfaces, and components using JSDoc
+  ```ts
+  /**
+   * Evaluates an AST node in the given execution context
+   * @param node - The AST node to evaluate
+   * @param context - The current execution context
+   * @returns The result of evaluating the node
+   * @throws {ReferenceError} When a variable is referenced before initialization
+   */
+  function evaluateNode(node: ASTNode, context: ExecutionContext): EvaluationResult {
+    // Implementation
+  }
+  ```
+
+- Include examples in documentation for complex functions
+
+- Document non-obvious code with inline comments
+
+## Import Order
+
+- Group imports in the following order:
+  1. External libraries
+  2. Internal modules
+  3. Type imports
+  4. CSS/asset imports
+
+  ```ts
+  // External libraries
+  import React, { useState, useEffect } from 'react';
+  import { motion } from 'framer-motion';
+  
+  // Internal modules
+  import { evaluateNode } from '../../engine/ast-evaluator';
+  import { Button } from '../common/button';
+  
+  // Type imports
+  import type { ASTNode, ExecutionContext } from '../../types';
+  
+  // CSS/assets
+  import './styles.css';
+  ```
+
+
+
+
+
+

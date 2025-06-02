@@ -1,0 +1,204 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# TypeScript Conventions
+
+## Type Definitions
+
+- Use union types for AST nodes and other complex type hierarchies
+  ```typescript
+  type ASTNode = 
+    | VariableDeclaration
+    | FunctionDeclaration
+    | ExpressionStatement;
+  ```
+
+- Define interfaces for data structures and component props
+  ```typescript
+  interface ExecutionContext {
+    variableEnvironment: EnvironmentRecord;
+    lexicalEnvironment: EnvironmentRecord;
+    thisBinding: any;
+    outer: ExecutionContext | null;
+  }
+  ```
+
+- Prefer interfaces for objects with behavior (methods)
+  ```typescript
+  interface ScopeChain {
+    lookup(name: string): Variable | null;
+    declare(name: string, value: any): void;
+    assign(name: string, value: any): boolean;
+  }
+  ```
+
+- Use type aliases for complex types, unions, and intersections
+  ```typescript
+  type VariableState = 'uninitialized' | 'initialized' | 'tdz';
+  type EventHandler<T> = (event: T) => void;
+  ```
+
+## Strict Typing
+
+- Never use `any` - use appropriate types or `unknown` when needed
+  ```typescript
+  // Instead of any
+  function parseInput(input: unknown): ASTNode {
+    // Type guard to narrow the type
+    if (typeof input === 'string') {
+      return parseString(input);
+    }
+    throw new Error('Invalid input type');
+  }
+  ```
+
+- Use type assertions sparingly and only when you're certain about the type
+  ```typescript
+  // Use type guards when possible
+  if (isVariableDeclaration(node)) {
+    // TypeScript knows node is VariableDeclaration here
+  }
+  ```
+
+- Leverage TypeScript's utility types
+  ```typescript
+  type ReadonlyContext = Readonly<ExecutionContext>;
+  type PartialConfig = Partial<Configuration>;
+  type EnvironmentMap = Record<string, EnvironmentRecord>;
+  ```
+
+## Generics
+
+- Use generics for reusable components and functions
+  ```typescript
+  function createStore<T>(initialState: T) {
+    let state = initialState;
+    return {
+      getState: () => state,
+      setState: (newState: T) => { state = newState; }
+    };
+  }
+  ```
+
+- Constrain generic types when appropriate
+  ```typescript
+  function traverse<T extends ASTNode>(node: T, visitor: Visitor<T>): void {
+    // Implementation
+  }
+  ```
+
+## TypeScript with React
+
+- Use function component syntax with explicit return type
+  ```typescript
+  const Button: React.FC<ButtonProps> = ({ onClick, children }) => {
+    return (
+      <button onClick={onClick}>{children}</button>
+    );
+  };
+  ```
+
+- Type event handlers properly
+  ```typescript
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setValue(event.target.value);
+  };
+  ```
+
+- Use type inference when it doesn't sacrifice clarity
+  ```typescript
+  // Type is inferred as string
+  const [value, setValue] = useState('');
+  
+  // Explicitly type for complex structures
+  const [context, setContext] = useState<ExecutionContext | null>(null);
+  ```
+
+## Enums and Constants
+
+- Use const enums for related values
+  ```typescript
+  const enum NodeType {
+    VariableDeclaration = 'VariableDeclaration',
+    FunctionDeclaration = 'FunctionDeclaration',
+    ExpressionStatement = 'ExpressionStatement'
+  }
+  ```
+
+- Use mapped types with string literal unions for extensible enums
+  ```typescript
+  type ErrorType = 'syntax' | 'reference' | 'type' | 'range';
+  
+  const ErrorMessages: Record<ErrorType, string> = {
+    syntax: 'Invalid syntax',
+    reference: 'Reference error',
+    type: 'Type error',
+    range: 'Range error'
+  };
+  ```
+
+## Error Handling
+
+- Define custom error types with TypeScript
+  ```typescript
+  class TDZError extends Error {
+    name = 'TDZError';
+    constructor(variableName: string) {
+      super(`Cannot access '${variableName}' before initialization`);
+    }
+  }
+  ```
+
+- Use discriminated unions for result types
+  ```typescript
+  type Result<T> = 
+    | { success: true; value: T }
+    | { success: false; error: Error };
+  
+  function evaluate(node: ASTNode): Result<any> {
+    try {
+      const value = doEvaluation(node);
+      return { success: true, value };
+    } catch (error) {
+      return { success: false, error: error as Error };
+    }
+  }
+  ```
+
+## Module Imports/Exports
+
+- Use named exports for most functions and classes
+  ```typescript
+  // In ast-nodes.ts
+  export interface ASTNode {
+    type: string;
+    location: SourceLocation;
+  }
+  
+  export class NodeVisitor {
+    // implementation
+  }
+  ```
+
+- Use default exports sparingly, mainly for components
+  ```typescript
+  // In code-editor.tsx
+  const CodeEditor: React.FC<CodeEditorProps> = (props) => {
+    // implementation
+  };
+  
+  export default CodeEditor;
+  ```
+
+- Re-export from index files for cleaner imports
+  ```typescript
+  // In engine/index.ts
+  export * from './ast-evaluator';
+  export * from './execution-context';
+  export * from './scope-chain';
+  ```
+
+
+
