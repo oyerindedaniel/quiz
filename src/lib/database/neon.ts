@@ -1,15 +1,10 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import {
-  remoteUsersTable,
-  remoteSubjectsTable,
-  remoteQuestionsTable,
-  remoteQuizAttemptsTable,
-  remoteQuizAnalyticsTable,
-} from "./schema";
+import { remoteSchema } from "./remote-schema";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 export class NeonManager {
-  private db: ReturnType<typeof drizzle> | null = null;
+  private db: NodePgDatabase<typeof remoteSchema> | null = null;
   private pool: Pool | null = null;
   private connectionString: string;
   private static instance: NeonManager | null = null;
@@ -18,9 +13,6 @@ export class NeonManager {
     this.connectionString = connectionString;
   }
 
-  /**
-   * Get singleton instance
-   */
   public static getInstance(connectionString?: string): NeonManager {
     if (!NeonManager.instance) {
       if (!connectionString) {
@@ -34,7 +26,7 @@ export class NeonManager {
   /**
    * Initialize NeonDB connection using TCP
    */
-  public async initialize(): Promise<ReturnType<typeof drizzle>> {
+  public async initialize(): Promise<NodePgDatabase<typeof remoteSchema>> {
     if (this.db) {
       return this.db;
     }
@@ -56,11 +48,13 @@ export class NeonManager {
         },
       });
 
-      this.db = drizzle(this.pool);
+      this.db = drizzle(this.pool, { schema: remoteSchema });
 
       await this.testConnection();
 
-      console.log("Neon database connected successfully via TCP");
+      console.log(
+        "Neon database connected successfully via TCP with Drizzle ORM"
+      );
       return this.db;
     } catch (error) {
       console.error("Failed to initialize Neon database:", error);
@@ -90,9 +84,9 @@ export class NeonManager {
   }
 
   /**
-   * Get database instance
+   * Get database instance (use this for query builder operations)
    */
-  public getDatabase(): ReturnType<typeof drizzle> {
+  public getDatabase(): NodePgDatabase<typeof remoteSchema> {
     if (!this.db) {
       throw new Error("Database not initialized. Call initialize() first.");
     }
@@ -107,7 +101,7 @@ export class NeonManager {
   }
 
   /**
-   * Execute raw SQL query
+   * Execute raw SQL query (only use when query builder isn't sufficient)
    */
   public async executeRawSQL(
     queryText: string,

@@ -1,75 +1,41 @@
-// Database Entity Types
+export type {
+  User,
+  NewUser,
+  Subject,
+  NewSubject,
+  Question,
+  NewQuestion,
+  QuizAttempt,
+  NewQuizAttempt,
+  SyncLog,
+  NewSyncLog,
+} from "@/lib/database/local-schema";
+
+export type {
+  RemoteUser,
+  NewRemoteUser,
+  RemoteSubject,
+  NewRemoteSubject,
+  RemoteQuestion,
+  NewRemoteQuestion,
+  RemoteQuizAttempt,
+  NewRemoteQuizAttempt,
+} from "@/lib/database/remote-schema";
+
+// Import types for local use
+import type {
+  User,
+  Subject,
+  QuizAttempt,
+  Question,
+} from "@/lib/database/local-schema";
+
+// Application-specific types
 
 export type Class = "SS2" | "JSS3";
 export type Gender = "MALE" | "FEMALE";
 
-export interface User {
-  id: string;
-  name: string;
-  studentCode: string;
-  passwordHash: string;
-  class: Class;
-  gender: Gender;
-  createdAt: string;
-  updatedAt: string;
-  lastSynced?: string;
-  isActive: boolean;
-}
-
-export interface Subject {
-  id: string;
-  name: string;
-  subjectCode: string;
-  description?: string;
-  class: Class;
-  totalQuestions: number;
-  createdAt: string;
-  updatedAt: string;
-  isActive: boolean;
-}
-
-export interface Question {
-  id: string;
-  subjectId: string;
-  text: string;
-  options: string; // JSON string
-  answer: string;
-  difficultyLevel: number;
-  questionOrder?: number;
-  createdAt: string;
-  updatedAt: string;
-  isActive: boolean;
-}
-
-export interface QuizAttempt {
-  id: string;
-  userId: string;
-  subjectId: string;
-  answers?: string; // JSON string
-  score?: number;
-  totalQuestions: number;
-  submitted: boolean;
-  synced: boolean;
-  startedAt: string;
-  submittedAt?: string;
-  updatedAt: string;
-  syncAttemptedAt?: string;
-  syncError?: string;
-  sessionDuration?: number;
-}
-
-export interface SyncLog {
-  id: string;
-  operationType: string;
-  tableName: string;
-  recordId: string;
-  status: "success" | "failed" | "pending";
-  errorMessage?: string;
-  attemptedAt: string;
-  completedAt?: string;
-}
-
-// Input/Creation Types
+// Input/Creation Types for seeding and imports
 export interface CreateUserData {
   id: string;
   name: string;
@@ -87,31 +53,6 @@ export interface DatabaseUserData {
   passwordHash: string;
   class: Class;
   gender: Gender;
-}
-
-export interface CreateSubjectData {
-  id: string;
-  name: string;
-  subjectCode: string;
-  description?: string;
-  class: Class;
-}
-
-export interface CreateQuestionData {
-  id: string;
-  subjectId: string;
-  text: string;
-  options: string; // JSON string
-  answer: string;
-  difficultyLevel?: number;
-  questionOrder?: number;
-}
-
-export interface CreateQuizAttemptData {
-  id: string;
-  userId: string;
-  subjectId: string;
-  totalQuestions: number;
 }
 
 // Quiz Flow Types
@@ -136,6 +77,7 @@ export interface SubmissionResult {
   totalQuestions?: number;
   correctAnswers?: number;
   percentage?: number;
+  duration?: number;
   error?: string;
 }
 
@@ -169,7 +111,9 @@ export interface SyncResult {
   success: boolean;
   pushedRecords?: number;
   pulledRecords?: number;
+  conflicts?: SyncConflict[];
   error?: string;
+  duration?: number;
 }
 
 export interface SyncData {
@@ -194,6 +138,15 @@ export interface ImportResult {
   successful: number;
   failed: number;
   errors: string[];
+  subjects: {
+    created: number;
+    existing: number;
+  };
+  questions: {
+    regular: number;
+    passages: number;
+    headers: number;
+  };
 }
 
 export interface ExcelQuestion {
@@ -206,7 +159,7 @@ export interface ExcelQuestion {
   "Subject Code": string;
 }
 
-// Student/Subject Data Types (consolidated from constants/students.ts)
+// Student/Subject Data Types
 export interface StudentData {
   name: string;
   gender: Gender;
@@ -294,6 +247,44 @@ export interface DatabaseAPI {
   checkIntegrity: () => Promise<boolean>;
 }
 
+// Quiz API Types
+export interface QuizAPI {
+  getQuestions: (subjectId: string) => Promise<Question[]>;
+  findIncompleteAttempt: (
+    userId: string,
+    subjectId: string
+  ) => Promise<QuizAttempt | null>;
+  createAttempt: (attemptData: any) => Promise<string>;
+  getAttempt: (attemptId: string) => Promise<QuizAttempt | null>;
+  saveAnswer: (
+    attemptId: string,
+    questionId: string,
+    answer: string
+  ) => Promise<void>;
+  submit: (
+    attemptId: string,
+    score: number,
+    sessionDuration: number
+  ) => Promise<void>;
+}
+
+// User API Types
+export interface UserAPI {
+  findByStudentCode: (studentCode: string) => Promise<User | null>;
+  create: (userData: any) => Promise<void>;
+}
+
+// Subject API Types
+export interface SubjectAPI {
+  findByCode: (subjectCode: string) => Promise<Subject | null>;
+}
+
+// CSV API Types
+export interface CSVAPI {
+  import: (csvContent: string) => Promise<ImportResult>;
+  readFile: (filePath: string) => Promise<string>;
+}
+
 // App API Types
 export interface AppAPI {
   getVersion: () => Promise<string>;
@@ -302,6 +293,10 @@ export interface AppAPI {
 
 export interface ElectronAPI {
   database: DatabaseAPI;
+  quiz: QuizAPI;
+  user: UserAPI;
+  subject: SubjectAPI;
+  csv: CSVAPI;
   app: AppAPI;
 }
 
@@ -309,4 +304,60 @@ declare global {
   interface Window {
     electronAPI: ElectronAPI;
   }
+}
+
+// CSV Import Types
+export interface CSVRow {
+  "Subject Code": string;
+  "Question Text": string;
+  "Option A": string;
+  "Option B": string;
+  "Option C": string;
+  "Option D": string;
+  "Correct Answer": string;
+  "Question Order": string;
+}
+
+export interface QuestionItem {
+  question: Question;
+  type: "question" | "passage" | "header";
+  content: string;
+  options?: string[];
+  answer?: string;
+}
+
+export interface ProcessedQuizData {
+  questionItems: QuestionItem[];
+  actualQuestions: QuestionItem[]; // Only questions that can be answered
+  totalQuestions: number; // Count of answerable questions
+}
+
+// Sync Engine Types
+export interface DatabaseServiceInterface {
+  findUserByStudentCode(studentCode: string): Promise<any>;
+  createUser(userData: any): Promise<void>;
+  findSubjectByCode(subjectCode: string): Promise<any>;
+  createSubject(subjectData: any): Promise<void>;
+  getQuestionsForSubject(subjectId: string): Promise<any[]>;
+  createQuestion(questionData: any): Promise<void>;
+  getAllQuizAttempts(): Promise<any[]>;
+  isConnected(): boolean;
+}
+
+export interface SyncStatus {
+  lastSyncTimestamp: string | null;
+  isOnline: boolean;
+  localChanges: number;
+  remoteChanges: number;
+  syncInProgress: boolean;
+}
+
+export interface SyncConflict {
+  id: string;
+  tableName: string;
+  recordId: string;
+  localRecord: any;
+  remoteRecord: any;
+  conflictType: "update_conflict" | "delete_conflict";
+  timestamp: string;
 }

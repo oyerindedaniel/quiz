@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { QuizController } from "../../lib/quiz/quiz-controller";
@@ -47,7 +46,6 @@ export function QuizContainer({
       const session = await quizController.startQuiz(userId, subjectId);
       setQuizSession(session);
 
-      // Get current question
       const question = quizController.getCurrentQuestion();
       setCurrentQuestion(question);
 

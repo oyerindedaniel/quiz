@@ -1,4 +1,4 @@
-import { LocalDatabaseService } from "../database/local-database-service";
+import { IPCDatabaseService } from "../services/ipc-database-service";
 import { generateUUID } from "../utils";
 import type {
   Question,
@@ -6,15 +6,15 @@ import type {
   QuizSession,
   AnswerResult,
   SubmissionResult,
-  CreateQuizAttemptData,
-} from "../../types";
+} from "@/types";
+import type { NewQuizAttempt } from "../database/local-schema";
 
 export class QuizController {
-  private localDb: LocalDatabaseService;
+  private ipcDb: IPCDatabaseService;
   private currentSession: QuizSession | null = null;
 
   constructor() {
-    this.localDb = LocalDatabaseService.getInstance();
+    this.ipcDb = new IPCDatabaseService();
   }
 
   /**
@@ -22,8 +22,11 @@ export class QuizController {
    */
   async startQuiz(userId: string, subjectId: string): Promise<QuizSession> {
     try {
-      // Check for existing incomplete attempt
-      const existingAttempt = await this.localDb.findIncompleteAttempt(
+      if (!this.ipcDb.isElectronEnvironment()) {
+        throw new Error("This application requires Electron environment");
+      }
+
+      const existingAttempt = await this.ipcDb.findIncompleteAttempt(
         userId,
         subjectId
       );
@@ -43,7 +46,7 @@ export class QuizController {
    * Resume existing quiz attempt
    */
   private async resumeQuiz(attempt: QuizAttempt): Promise<QuizSession> {
-    const questions = await this.localDb.getQuestionsForSubject(
+    const questions = await this.ipcDb.getQuestionsForSubject(
       attempt.subjectId
     );
 
@@ -75,20 +78,20 @@ export class QuizController {
     userId: string,
     subjectId: string
   ): Promise<QuizSession> {
-    const questions = await this.localDb.getQuestionsForSubject(subjectId);
+    const questions = await this.ipcDb.getQuestionsForSubject(subjectId);
 
     if (questions.length === 0) {
       throw new Error("No questions available for this subject");
     }
 
-    const attemptData: CreateQuizAttemptData = {
+    const attemptData: Omit<NewQuizAttempt, "startedAt" | "updatedAt"> = {
       id: generateUUID(),
       userId,
       subjectId,
       totalQuestions: questions.length,
     };
 
-    const attemptId = await this.localDb.createQuizAttempt(attemptData);
+    const attemptId = await this.ipcDb.createQuizAttempt(attemptData);
 
     this.currentSession = {
       attemptId,
@@ -189,20 +192,17 @@ export class QuizController {
       return { success: false, error: "No current question" };
     }
 
-    // Validate answer format
     if (!["A", "B", "C", "D"].includes(selectedOption.toUpperCase())) {
       return { success: false, error: "Invalid answer option" };
     }
 
     try {
-      // Update answer in database
-      await this.localDb.updateQuizAnswer(
+      await this.ipcDb.updateQuizAnswer(
         this.currentSession.attemptId,
         currentQuestion.id,
         selectedOption.toUpperCase()
       );
 
-      // Update local session
       this.currentSession.answers[currentQuestion.id] =
         selectedOption.toUpperCase();
 
@@ -229,35 +229,22 @@ export class QuizController {
     }
 
     try {
-      // Get current attempt
-      const attempt = await this.localDb.getQuizAttempt(
+      const attempt = await this.ipcDb.getQuizAttempt(
         this.currentSession.attemptId
       );
       if (!attempt) {
         throw new Error("Quiz attempt not found");
       }
 
-      // Calculate score
       const scoreResult = this.calculateScore();
-
-      // Calculate session duration
       const sessionDuration = this.calculateSessionDuration(attempt.startedAt);
 
-      // Mark as submitted
-      await this.localDb.runQuery(
-        `UPDATE quiz_attempts 
-         SET submitted = 1, score = ?, submitted_at = ?, session_duration = ?, updated_at = ?
-         WHERE id = ?`,
-        [
-          scoreResult.totalScore,
-          new Date().toISOString(),
-          sessionDuration,
-          new Date().toISOString(),
-          this.currentSession.attemptId,
-        ]
+      await this.ipcDb.submitQuiz(
+        this.currentSession.attemptId,
+        scoreResult.correctAnswers,
+        sessionDuration
       );
 
-      // Clear current session
       this.currentSession = null;
 
       return {
@@ -268,6 +255,7 @@ export class QuizController {
         percentage: Math.round(
           (scoreResult.correctAnswers / scoreResult.totalQuestions) * 100
         ),
+        duration: sessionDuration,
       };
     } catch (error) {
       console.error("Failed to submit quiz:", error);

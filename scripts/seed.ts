@@ -5,26 +5,25 @@
  * Run with: node scripts/seed.js or pnpm run seed
  */
 
-import { UserSeedingService } from "../src/lib/auth/user-seeding-service.js";
-import { sqliteManager } from "../src/lib/database/sqlite.js";
+import { UserSeedingService } from "../src/lib/auth/user-seeding-service";
+import { createSQLiteManager } from "../src/lib/database/sqlite";
 
 async function main() {
   console.log("🌱 Starting database seeding...\n");
 
+  const sqliteManager = createSQLiteManager();
+
   try {
-    // Initialize database
     console.log("📁 Initializing database...");
+
     await sqliteManager.initialize();
     console.log("✅ Database initialized\n");
 
-    // Create seeding service
     const seedingService = new UserSeedingService();
 
-    // Run seeding
     console.log("👥 Creating student and subject data...");
     const results = await seedingService.createProductionData();
 
-    // Display results
     console.log("\n📊 Seeding Results:");
     console.log("==================");
 
@@ -61,23 +60,24 @@ async function main() {
       console.log("   JSS3_ENG, JSS3_MTH, JSS3_SST, JSS3_BSC, JSS3_YOR");
     }
   } catch (error) {
-    console.error("\n❌ Seeding failed:", error.message);
-    if (error.stack) {
-      console.error("Stack trace:", error.stack);
+    if (error instanceof Error) {
+      console.error("\n❌ Seeding failed:", error.message);
+      if (error.stack) {
+        console.error("Stack trace:", error.stack);
+      }
+    } else {
+      console.error("\n❌ Seeding failed:", String(error));
     }
     process.exit(1);
   } finally {
-    // Close database connection
     sqliteManager.close();
     console.log("\n🔐 Database connection closed");
   }
 }
 
-// Handle unhandled rejections
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
   process.exit(1);
 });
 
-// Run the script
 main().catch(console.error);

@@ -85,7 +85,7 @@ export function generateSubjectCodes(): SubjectData[] {
           subjectCode = `${cls}_ENG`;
           break;
         case "MATHEMATICS":
-          subjectCode = `${cls}_MTH`;
+          subjectCode = `${cls}_MATH`;
           break;
         case "SOCIAL STUDIES":
           subjectCode = `${cls}_SST`;

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { isElectron } from "../lib/utils";
+import { isElectron } from "@/lib/utils";
 import { LoginForm } from "@/components/auth/login-form";
 import { SeedDataPanel } from "@/components/admin/seed-data-panel";
 import type { AuthResult } from "@/types";
@@ -39,7 +39,7 @@ export default function HomePage() {
     console.log(window.electronAPI, typeof window);
 
     try {
-      if (typeof window !== "undefined" && window.electronAPI) {
+      if (isElectron()) {
         try {
           console.log("Checking SQLite integrity");
           const result = await window.electronAPI.database.checkIntegrity();

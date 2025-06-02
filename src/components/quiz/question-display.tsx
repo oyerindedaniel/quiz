@@ -64,14 +64,9 @@ export function QuestionDisplay({
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
         <div className="bg-brand-500 px-6 py-4">
           <div className="flex items-center justify-between">
-            <Badge variant="secondary" className="bg-white text-brand-700">
+            <Badge variant="secondary">
               Question {questionNumber} of {totalQuestions}
             </Badge>
-            {question.difficultyLevel && (
-              <span className="text-brand-100 text-sm">
-                Difficulty: {"★".repeat(question.difficultyLevel)}
-              </span>
-            )}
           </div>
         </div>
 

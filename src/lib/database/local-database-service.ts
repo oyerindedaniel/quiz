@@ -1,17 +1,23 @@
+import { eq, and } from "drizzle-orm";
+import { createSQLiteManager } from "./sqlite";
+import { localSchema } from "./local-schema";
 import type {
   User,
+  NewUser,
   Subject,
+  NewSubject,
   Question,
+  NewQuestion,
   QuizAttempt,
-  CreateUserData,
-  DatabaseUserData,
-  CreateSubjectData,
-  CreateQuestionData,
-  CreateQuizAttemptData,
-} from "@/types";
+  NewQuizAttempt,
+} from "./local-schema";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import { isElectron } from "@/lib/utils";
 
 export class LocalDatabaseService {
   private static instance: LocalDatabaseService;
+  private db: BetterSQLite3Database<typeof localSchema> | null = null;
+  private sqliteManager: ReturnType<typeof createSQLiteManager> | null = null;
 
   private constructor() {}
 
@@ -22,70 +28,96 @@ export class LocalDatabaseService {
     return LocalDatabaseService.instance;
   }
 
-  private async executeQuery<T>(
-    sql: string,
-    params: unknown[] = []
-  ): Promise<T[]> {
-    if (typeof window !== "undefined" && window.electronAPI) {
-      return window.electronAPI.database.execute(sql, params) as Promise<T[]>;
+  /**
+   * Initialize the database connection
+   */
+  public async initialize(): Promise<void> {
+    if (this.db) {
+      return;
     }
-    throw new Error("Database not available in browser context");
+
+    this.sqliteManager = createSQLiteManager();
+    this.db = await this.sqliteManager.initialize();
   }
 
-  async runQuery(sql: string, params: unknown[] = []): Promise<any> {
-    if (typeof window !== "undefined" && window.electronAPI) {
-      return window.electronAPI.database.run(sql, params);
+  /**
+   * Get the database instance
+   */
+  private getDb(): BetterSQLite3Database<typeof localSchema> {
+    if (!this.db) {
+      throw new Error("Database not initialized. Call initialize() first.");
     }
-    throw new Error("Database not available in browser context");
+    return this.db;
+  }
+
+  /**
+   * Get the SQLite manager for raw SQL operations
+   */
+  private getSqliteManager(): ReturnType<typeof createSQLiteManager> {
+    if (!this.sqliteManager) {
+      throw new Error("Database not initialized. Call initialize() first.");
+    }
+    return this.sqliteManager;
   }
 
   // User operations
   async findUserByStudentCode(studentCode: string): Promise<User | null> {
-    const users = await this.executeQuery<User>(
-      "SELECT * FROM users WHERE student_code = ? AND is_active = 1",
-      [studentCode]
-    );
+    const db = this.getDb();
+    const users = await db
+      .select()
+      .from(localSchema.users)
+      .where(
+        and(
+          eq(localSchema.users.studentCode, studentCode),
+          eq(localSchema.users.isActive, true)
+        )
+      )
+      .limit(1);
+
     return users[0] || null;
   }
 
-  async createUser(userData: DatabaseUserData): Promise<void> {
-    await this.runQuery(
-      "INSERT INTO users (id, name, student_code, password_hash, class, gender, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [
-        userData.id,
-        userData.name,
-        userData.studentCode,
-        userData.passwordHash,
-        userData.class,
-        userData.gender,
-        new Date().toISOString(),
-        new Date().toISOString(),
-      ]
-    );
+  async createUser(
+    userData: Omit<NewUser, "createdAt" | "updatedAt">
+  ): Promise<void> {
+    const db = this.getDb();
+    const now = new Date().toISOString();
+
+    await db.insert(localSchema.users).values({
+      ...userData,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 
   // Subject operations
   async findSubjectByCode(subjectCode: string): Promise<Subject | null> {
-    const subjects = await this.executeQuery<Subject>(
-      "SELECT * FROM subjects WHERE subject_code = ? AND is_active = 1",
-      [subjectCode]
-    );
+    const db = this.getDb();
+    const subjects = await db
+      .select()
+      .from(localSchema.subjects)
+      .where(
+        and(
+          eq(localSchema.subjects.subjectCode, subjectCode),
+          eq(localSchema.subjects.isActive, true)
+        )
+      )
+      .limit(1);
+
     return subjects[0] || null;
   }
 
-  async createSubject(subjectData: CreateSubjectData): Promise<void> {
-    await this.runQuery(
-      "INSERT INTO subjects (id, name, subject_code, description, class, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [
-        subjectData.id,
-        subjectData.name,
-        subjectData.subjectCode,
-        subjectData.description || null,
-        subjectData.class,
-        new Date().toISOString(),
-        new Date().toISOString(),
-      ]
-    );
+  async createSubject(
+    subjectData: Omit<NewSubject, "createdAt" | "updatedAt">
+  ): Promise<void> {
+    const db = this.getDb();
+    const now = new Date().toISOString();
+
+    await db.insert(localSchema.subjects).values({
+      ...subjectData,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 
   // Quiz attempt operations
@@ -93,34 +125,45 @@ export class LocalDatabaseService {
     userId: string,
     subjectId: string
   ): Promise<QuizAttempt | null> {
-    const attempts = await this.executeQuery<QuizAttempt>(
-      "SELECT * FROM quiz_attempts WHERE user_id = ? AND subject_id = ? AND submitted = 0",
-      [userId, subjectId]
-    );
+    const db = this.getDb();
+    const attempts = await db
+      .select()
+      .from(localSchema.quizAttempts)
+      .where(
+        and(
+          eq(localSchema.quizAttempts.userId, userId),
+          eq(localSchema.quizAttempts.subjectId, subjectId),
+          eq(localSchema.quizAttempts.submitted, false)
+        )
+      )
+      .limit(1);
+
     return attempts[0] || null;
   }
 
-  async createQuizAttempt(attemptData: CreateQuizAttemptData): Promise<string> {
-    const id = attemptData.id;
-    await this.runQuery(
-      "INSERT INTO quiz_attempts (id, user_id, subject_id, total_questions, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-      [
-        id,
-        attemptData.userId,
-        attemptData.subjectId,
-        attemptData.totalQuestions,
-        new Date().toISOString(),
-        new Date().toISOString(),
-      ]
-    );
-    return id;
+  async createQuizAttempt(
+    attemptData: Omit<NewQuizAttempt, "startedAt" | "updatedAt">
+  ): Promise<string> {
+    const db = this.getDb();
+    const now = new Date().toISOString();
+
+    await db.insert(localSchema.quizAttempts).values({
+      ...attemptData,
+      startedAt: now,
+      updatedAt: now,
+    });
+
+    return attemptData.id;
   }
 
   async getQuizAttempt(attemptId: string): Promise<QuizAttempt | null> {
-    const attempts = await this.executeQuery<QuizAttempt>(
-      "SELECT * FROM quiz_attempts WHERE id = ?",
-      [attemptId]
-    );
+    const db = this.getDb();
+    const attempts = await db
+      .select()
+      .from(localSchema.quizAttempts)
+      .where(eq(localSchema.quizAttempts.id, attemptId))
+      .limit(1);
+
     return attempts[0] || null;
   }
 
@@ -129,11 +172,13 @@ export class LocalDatabaseService {
     questionId: string,
     answer: string
   ): Promise<void> {
-    // Get current answers
-    const attempts = await this.executeQuery<QuizAttempt>(
-      "SELECT answers FROM quiz_attempts WHERE id = ?",
-      [attemptId]
-    );
+    const db = this.getDb();
+
+    const attempts = await db
+      .select({ answers: localSchema.quizAttempts.answers })
+      .from(localSchema.quizAttempts)
+      .where(eq(localSchema.quizAttempts.id, attemptId))
+      .limit(1);
 
     if (attempts.length === 0) {
       throw new Error("Quiz attempt not found");
@@ -142,44 +187,113 @@ export class LocalDatabaseService {
     const currentAnswers = attempts[0].answers
       ? JSON.parse(attempts[0].answers)
       : {};
+
     currentAnswers[questionId] = answer;
 
-    await this.runQuery(
-      "UPDATE quiz_attempts SET answers = ?, updated_at = ? WHERE id = ?",
-      [JSON.stringify(currentAnswers), new Date().toISOString(), attemptId]
-    );
+    await db
+      .update(localSchema.quizAttempts)
+      .set({
+        answers: JSON.stringify(currentAnswers),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(localSchema.quizAttempts.id, attemptId));
+  }
+
+  async submitQuizAttempt(
+    attemptId: string,
+    score: number,
+    sessionDuration: number
+  ): Promise<void> {
+    const db = this.getDb();
+
+    await db
+      .update(localSchema.quizAttempts)
+      .set({
+        submitted: true,
+        score,
+        submittedAt: new Date().toISOString(),
+        sessionDuration,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(localSchema.quizAttempts.id, attemptId));
   }
 
   // Question operations
   async getQuestionsForSubject(subjectId: string): Promise<Question[]> {
-    return this.executeQuery<Question>(
-      "SELECT * FROM questions WHERE subject_id = ? AND is_active = 1 ORDER BY question_order, RANDOM()",
-      [subjectId]
-    );
+    const db = this.getDb();
+    return db
+      .select()
+      .from(localSchema.questions)
+      .where(
+        and(
+          eq(localSchema.questions.subjectId, subjectId),
+          eq(localSchema.questions.isActive, true)
+        )
+      )
+      .orderBy(localSchema.questions.questionOrder);
   }
 
-  async createQuestion(questionData: CreateQuestionData): Promise<void> {
-    await this.runQuery(
-      "INSERT INTO questions (id, subject_id, text, options, answer, difficulty_level, question_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [
-        questionData.id,
-        questionData.subjectId,
-        questionData.text,
-        questionData.options,
-        questionData.answer,
-        questionData.difficultyLevel || 1,
-        questionData.questionOrder || null,
-        new Date().toISOString(),
-        new Date().toISOString(),
-      ]
-    );
+  async createQuestion(
+    questionData: Omit<NewQuestion, "createdAt" | "updatedAt">
+  ): Promise<void> {
+    const db = this.getDb();
+    const now = new Date().toISOString();
+
+    await db.insert(localSchema.questions).values({
+      ...questionData,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 
-  // Utility operations
   async checkIntegrity(): Promise<boolean> {
-    if (typeof window !== "undefined" && window.electronAPI) {
+    if (isElectron()) {
       return window.electronAPI.database.checkIntegrity();
     }
     return false;
+  }
+
+  // Raw SQL operations (exposed for MainDatabaseService)
+  async executeRawSQL(sql: string, params: unknown[] = []): Promise<unknown[]> {
+    const sqliteManager = this.getSqliteManager();
+    return sqliteManager.executeRawSQL(sql, params);
+  }
+
+  async runRawSQL(sql: string, params: unknown[] = []): Promise<unknown> {
+    const sqliteManager = this.getSqliteManager();
+    return sqliteManager.runRawSQL(sql, params);
+  }
+
+  async backupDatabase(
+    backupPath: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const sqliteManager = this.getSqliteManager();
+    return sqliteManager.backup(backupPath);
+  }
+
+  async checkDatabaseIntegrity(): Promise<boolean> {
+    const sqliteManager = this.getSqliteManager();
+    return sqliteManager.checkIntegrity();
+  }
+
+  /**
+   * Cleanup database connections
+   */
+  async cleanup(): Promise<void> {
+    console.log("LocalDatabaseService: Starting cleanup...");
+
+    try {
+      if (this.sqliteManager) {
+        this.sqliteManager.close();
+        this.sqliteManager = null;
+        console.log("LocalDatabaseService: SQLite manager closed");
+      }
+
+      this.db = null;
+      console.log("LocalDatabaseService: Cleanup completed");
+    } catch (error) {
+      console.error("LocalDatabaseService: Cleanup failed:", error);
+      throw error;
+    }
   }
 }

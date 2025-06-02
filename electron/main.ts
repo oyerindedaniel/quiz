@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { sqliteManager } from "../src/lib/database/sqlite.js";
+import { MainDatabaseService } from "./services/database-service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -17,8 +17,10 @@ console.log({
 
 class QuizApp {
   private mainWindow: BrowserWindow | null = null;
+  private dbService: MainDatabaseService;
 
   constructor() {
+    this.dbService = new MainDatabaseService();
     this.init();
   }
 
@@ -26,16 +28,14 @@ class QuizApp {
     await app.whenReady();
 
     try {
-      await sqliteManager.initialize();
-      console.log("Database initialized successfully");
+      await this.dbService.initialize();
+      console.log("Main database service initialized successfully");
     } catch (error) {
-      console.error("Failed to initialize database:", error);
+      console.error("Failed to initialize database service:", error);
     }
 
     this.createWindow();
-
     this.setupIPC();
-
     this.setupAppEvents();
   }
 
@@ -91,10 +91,10 @@ class QuizApp {
   }
 
   private setupIPC(): void {
-    // Database operations
+    // Raw database operations (legacy support)
     ipcMain.handle("db:execute", async (_, sql: string, params: unknown[]) => {
       try {
-        return sqliteManager.executeRawSQL(sql, params);
+        return await this.dbService.executeRawSQL(sql, params);
       } catch (error) {
         console.error("Database execute error:", error);
         throw error;
@@ -103,18 +103,17 @@ class QuizApp {
 
     ipcMain.handle("db:run", async (_, sql: string, params: unknown[]) => {
       try {
-        return sqliteManager.runRawSQL(sql, params);
+        return await this.dbService.runRawSQL(sql, params);
       } catch (error) {
         console.error("Database run error:", error);
         throw error;
       }
     });
 
-    // Database management
+    // Database management operations
     ipcMain.handle("db:backup", async (_, backupPath: string) => {
       try {
-        sqliteManager.backup(backupPath);
-        return { success: true };
+        return await this.dbService.backupDatabase(backupPath);
       } catch (error) {
         console.error("Database backup error:", error);
         return {
@@ -126,10 +125,134 @@ class QuizApp {
 
     ipcMain.handle("db:integrity-check", async () => {
       try {
-        return sqliteManager.checkIntegrity();
+        return await this.dbService.checkIntegrity();
       } catch (error) {
         console.error("Database integrity check error:", error);
         return false;
+      }
+    });
+
+    // Quiz operations via centralized database service
+    ipcMain.handle("quiz:get-questions", async (_, subjectId: string) => {
+      try {
+        return await this.dbService.getQuestionsForSubject(subjectId);
+      } catch (error) {
+        console.error("Get questions error:", error);
+        throw error;
+      }
+    });
+
+    ipcMain.handle(
+      "quiz:find-incomplete-attempt",
+      async (_, userId: string, subjectId: string) => {
+        try {
+          return await this.dbService.findIncompleteAttempt(userId, subjectId);
+        } catch (error) {
+          console.error("Find incomplete attempt error:", error);
+          throw error;
+        }
+      }
+    );
+
+    ipcMain.handle("quiz:create-attempt", async (_, attemptData: any) => {
+      try {
+        return await this.dbService.createQuizAttempt(attemptData);
+      } catch (error) {
+        console.error("Create quiz attempt error:", error);
+        throw error;
+      }
+    });
+
+    ipcMain.handle("quiz:get-attempt", async (_, attemptId: string) => {
+      try {
+        return await this.dbService.getQuizAttempt(attemptId);
+      } catch (error) {
+        console.error("Get quiz attempt error:", error);
+        throw error;
+      }
+    });
+
+    ipcMain.handle(
+      "quiz:save-answer",
+      async (_, attemptId: string, questionId: string, answer: string) => {
+        try {
+          return await this.dbService.updateQuizAnswer(
+            attemptId,
+            questionId,
+            answer
+          );
+        } catch (error) {
+          console.error("Save answer error:", error);
+          throw error;
+        }
+      }
+    );
+
+    ipcMain.handle(
+      "quiz:submit",
+      async (_, attemptId: string, score: number, sessionDuration: number) => {
+        try {
+          return await this.dbService.submitQuiz(
+            attemptId,
+            score,
+            sessionDuration
+          );
+        } catch (error) {
+          console.error("Submit quiz error:", error);
+          throw error;
+        }
+      }
+    );
+
+    // User operations
+    ipcMain.handle(
+      "user:find-by-student-code",
+      async (_, studentCode: string) => {
+        try {
+          return await this.dbService.findUserByStudentCode(studentCode);
+        } catch (error) {
+          console.error("Find user error:", error);
+          throw error;
+        }
+      }
+    );
+
+    ipcMain.handle("user:create", async (_, userData: any) => {
+      try {
+        return await this.dbService.createUser(userData);
+      } catch (error) {
+        console.error("Create user error:", error);
+        throw error;
+      }
+    });
+
+    // Subject operations
+    ipcMain.handle("subject:find-by-code", async (_, subjectCode: string) => {
+      try {
+        return await this.dbService.findSubjectByCode(subjectCode);
+      } catch (error) {
+        console.error("Find subject error:", error);
+        throw error;
+      }
+    });
+
+    // CSV Import operations
+    ipcMain.handle("csv:import", async (_, csvContent: string) => {
+      try {
+        return await this.dbService.importCSVQuestions(csvContent);
+      } catch (error) {
+        console.error("CSV import error:", error);
+        throw error;
+      }
+    });
+
+    ipcMain.handle("csv:read-file", async (_, filePath: string) => {
+      try {
+        const fs = await import("fs/promises");
+        return await fs.readFile(filePath, "utf-8");
+      } catch (error) {
+        console.error("Read CSV file error:", error);
+        throw error;
       }
     });
 
@@ -164,17 +287,28 @@ class QuizApp {
       }
     });
 
-    // Handle before quit
-    app.on("before-quit", () => {
-      this.cleanup();
+    // Handle before quit - properly cleanup database connections
+    app.on("before-quit", async (event) => {
+      try {
+        event.preventDefault();
+        await this.cleanup();
+        app.quit();
+      } catch (error) {
+        console.error("Cleanup failed during quit:", error);
+        app.quit();
+      }
     });
   }
 
-  private cleanup(): void {
-    // Close database connection
-    sqliteManager.close();
-    // Note: If we add NeonDB cleanup later, it should be handled async in before-quit
-    console.log("Application cleanup completed");
+  private async cleanup(): Promise<void> {
+    console.log("QuizApp: Starting application cleanup...");
+    try {
+      await this.dbService.cleanup();
+      console.log("QuizApp: Application cleanup completed successfully");
+    } catch (error) {
+      console.error("QuizApp: Application cleanup failed:", error);
+      throw error;
+    }
   }
 }
 
