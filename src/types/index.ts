@@ -25,8 +25,10 @@ export type {
 // Import types for local use
 import type {
   User,
+  NewUser,
   Subject,
   QuizAttempt,
+  NewQuizAttempt,
   Question,
 } from "@/lib/database/local-schema";
 
@@ -98,12 +100,12 @@ export interface AuthResult {
 }
 
 // Sync Types
-export interface SyncOperation {
+export interface SyncOperation<T = Record<string, unknown>> {
   id: string;
   type: "push" | "pull" | "conflict_resolution";
   tableName: string;
   recordId: string;
-  data: any;
+  data: T;
   timestamp: string;
 }
 
@@ -111,15 +113,16 @@ export interface SyncResult {
   success: boolean;
   pushedRecords?: number;
   pulledRecords?: number;
-  conflicts?: SyncConflict[];
+  conflicts?: SyncConflict<Record<string, unknown>>[];
   error?: string;
   duration?: number;
+  note?: string; // Additional information about the sync operation
 }
 
 export interface SyncData {
-  users: any[];
-  subjects: any[];
-  questions: any[];
+  users: User[];
+  subjects: Subject[];
+  questions: Question[];
 }
 
 // Error Handling Types
@@ -254,7 +257,9 @@ export interface QuizAPI {
     userId: string,
     subjectId: string
   ) => Promise<QuizAttempt | null>;
-  createAttempt: (attemptData: any) => Promise<string>;
+  createAttempt: (
+    attemptData: Omit<NewQuizAttempt, "startedAt" | "updatedAt">
+  ) => Promise<string>;
   getAttempt: (attemptId: string) => Promise<QuizAttempt | null>;
   saveAnswer: (
     attemptId: string,
@@ -271,7 +276,7 @@ export interface QuizAPI {
 // User API Types
 export interface UserAPI {
   findByStudentCode: (studentCode: string) => Promise<User | null>;
-  create: (userData: any) => Promise<void>;
+  create: (userData: Omit<NewUser, "createdAt" | "updatedAt">) => Promise<void>;
 }
 
 // Subject API Types
@@ -291,6 +296,20 @@ export interface AppAPI {
   getPath: (name: string) => Promise<string | null>;
 }
 
+// Sync API Types
+export interface SyncAPI {
+  trigger: (
+    trigger?: "manual" | "startup" | "app_close"
+  ) => Promise<{ success: boolean; error?: string }>;
+  getStatus: () => Promise<SyncStatus>;
+  queueOperation: <T = Record<string, unknown>>(operation: {
+    type: "push" | "pull" | "conflict_resolution";
+    tableName: string;
+    recordId: string;
+    data: T;
+  }) => Promise<void>;
+}
+
 export interface ElectronAPI {
   database: DatabaseAPI;
   quiz: QuizAPI;
@@ -298,6 +317,7 @@ export interface ElectronAPI {
   subject: SubjectAPI;
   csv: CSVAPI;
   app: AppAPI;
+  sync: SyncAPI;
 }
 
 declare global {
@@ -352,12 +372,12 @@ export interface SyncStatus {
   syncInProgress: boolean;
 }
 
-export interface SyncConflict {
+export interface SyncConflict<T = Record<string, unknown>> {
   id: string;
   tableName: string;
   recordId: string;
-  localRecord: any;
-  remoteRecord: any;
+  localRecord: T;
+  remoteRecord: T;
   conflictType: "update_conflict" | "delete_conflict";
   timestamp: string;
 }

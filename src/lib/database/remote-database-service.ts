@@ -11,6 +11,7 @@ import type {
   RemoteQuizAttempt,
   NewRemoteQuizAttempt,
 } from "./remote-schema";
+import type { QuizAttempt } from "./local-schema";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 export class RemoteDatabaseService {
@@ -311,6 +312,117 @@ export class RemoteDatabaseService {
       .select()
       .from(remoteSchema.quizAttempts)
       .orderBy(remoteSchema.quizAttempts.startedAt);
+  }
+
+  /**
+   * Sync a quiz attempt from local to remote (used by sync engine)
+   */
+  async syncQuizAttempt(attempt: QuizAttempt): Promise<void> {
+    const db = this.getDb();
+
+    try {
+      // Use upsert pattern - try to insert, update if exists
+      await db
+        .insert(remoteSchema.quizAttempts)
+        .values({
+          id: attempt.id,
+          userId: attempt.userId,
+          subjectId: attempt.subjectId,
+          answers: attempt.answers ? JSON.parse(attempt.answers) : null,
+          score: attempt.score,
+          totalQuestions: attempt.totalQuestions,
+          submitted: attempt.submitted,
+          startedAt: new Date(attempt.startedAt),
+          submittedAt: attempt.submittedAt
+            ? new Date(attempt.submittedAt)
+            : null,
+          sessionDuration: attempt.sessionDuration,
+        })
+        .onConflictDoUpdate({
+          target: remoteSchema.quizAttempts.id,
+          set: {
+            answers: attempt.answers ? JSON.parse(attempt.answers) : null,
+            score: attempt.score,
+            submitted: attempt.submitted,
+            submittedAt: attempt.submittedAt
+              ? new Date(attempt.submittedAt)
+              : null,
+            sessionDuration: attempt.sessionDuration,
+            updatedAt: new Date(),
+          },
+        });
+
+      console.log(`RemoteDatabaseService: Synced quiz attempt ${attempt.id}`);
+    } catch (error) {
+      console.error(
+        `RemoteDatabaseService: Failed to sync quiz attempt ${attempt.id}:`,
+        error
+      );
+      throw new Error(
+        `Failed to sync quiz attempt: ${(error as Error).message}`
+      );
+    }
+  }
+
+  /**
+   * Pull latest data for initial sync (used by sync engine)
+   */
+  async pullLatestData(): Promise<{
+    users: any[];
+    subjects: any[];
+    questions: any[];
+  }> {
+    const db = this.getDb();
+
+    try {
+      const [users, subjects, questions] = await Promise.all([
+        db
+          .select()
+          .from(remoteSchema.users)
+          .where(eq(remoteSchema.users.isActive, true)),
+        db
+          .select()
+          .from(remoteSchema.subjects)
+          .where(eq(remoteSchema.subjects.isActive, true)),
+        db
+          .select()
+          .from(remoteSchema.questions)
+          .where(eq(remoteSchema.questions.isActive, true)),
+      ]);
+
+      console.log(
+        `RemoteDatabaseService: Pulled ${users.length} users, ${subjects.length} subjects, ${questions.length} questions`
+      );
+
+      return {
+        users: users.map((user) => ({
+          ...user,
+          // Convert for local schema compatibility
+          createdAt: user.createdAt.toISOString(),
+          updatedAt: user.updatedAt.toISOString(),
+        })),
+        subjects: subjects.map((subject) => ({
+          ...subject,
+          createdAt: subject.createdAt.toISOString(),
+          updatedAt: subject.updatedAt.toISOString(),
+        })),
+        questions: questions.map((question) => ({
+          ...question,
+          // Convert JSONB options to string for local SQLite
+          options: JSON.stringify(question.options),
+          createdAt: question.createdAt.toISOString(),
+          updatedAt: question.updatedAt.toISOString(),
+        })),
+      };
+    } catch (error) {
+      console.error(
+        "RemoteDatabaseService: Failed to pull latest data:",
+        error
+      );
+      throw new Error(
+        `Failed to pull latest data: ${(error as Error).message}`
+      );
+    }
   }
 
   // Sync operations

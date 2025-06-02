@@ -72,6 +72,13 @@ export const syncLogTable = sqliteTable("sync_log", {
   completedAt: text("completed_at"),
 });
 
+export const syncTimestampsTable = sqliteTable("sync_timestamps", {
+  tableName: text("table_name").primaryKey(),
+  lastPullSync: text("last_pull_sync"),
+  lastPushSync: text("last_push_sync"),
+  lastFullSync: text("last_full_sync"),
+});
+
 // Schema object for Drizzle configuration
 export const localSchema = {
   users: usersTable,
@@ -79,6 +86,7 @@ export const localSchema = {
   questions: questionsTable,
   quizAttempts: quizAttemptsTable,
   syncLog: syncLogTable,
+  syncTimestamps: syncTimestampsTable,
 };
 
 // Export types
@@ -92,3 +100,5 @@ export type QuizAttempt = typeof quizAttemptsTable.$inferSelect;
 export type NewQuizAttempt = typeof quizAttemptsTable.$inferInsert;
 export type SyncLog = typeof syncLogTable.$inferSelect;
 export type NewSyncLog = typeof syncLogTable.$inferInsert;
+export type SyncTimestamps = typeof syncTimestampsTable.$inferSelect;
+export type NewSyncTimestamps = typeof syncTimestampsTable.$inferInsert;

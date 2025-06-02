@@ -269,6 +269,43 @@ class QuizApp {
         return null;
       }
     });
+
+    // Sync operations
+    ipcMain.handle("sync:trigger", async (_, trigger?: string) => {
+      try {
+        return await this.dbService.triggerSync(trigger as any);
+      } catch (error) {
+        console.error("Trigger sync error:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
+      }
+    });
+
+    ipcMain.handle("sync:get-status", async () => {
+      try {
+        return await this.dbService.getSyncStatus();
+      } catch (error) {
+        console.error("Get sync status error:", error);
+        return {
+          lastSyncTimestamp: null,
+          isOnline: false,
+          localChanges: 0,
+          remoteChanges: 0,
+          syncInProgress: false,
+        };
+      }
+    });
+
+    ipcMain.handle("sync:queue-operation", async (_, operation: any) => {
+      try {
+        return await this.dbService.queueSyncOperation(operation);
+      } catch (error) {
+        console.error("Queue sync operation error:", error);
+        throw error;
+      }
+    });
   }
 
   private setupAppEvents(): void {

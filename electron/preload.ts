@@ -53,6 +53,19 @@ const electronAPI = {
     getVersion: () => ipcRenderer.invoke("app:get-version"),
     getPath: (name: string) => ipcRenderer.invoke("app:get-path", name),
   },
+
+  // Sync operations (secure)
+  sync: {
+    trigger: (trigger?: "manual" | "startup" | "app_close") =>
+      ipcRenderer.invoke("sync:trigger", trigger),
+    getStatus: () => ipcRenderer.invoke("sync:get-status"),
+    queueOperation: (operation: {
+      type: "push" | "pull" | "conflict_resolution";
+      tableName: string;
+      recordId: string;
+      data: any;
+    }) => ipcRenderer.invoke("sync:queue-operation", operation),
+  },
 };
 
 contextBridge.exposeInMainWorld("electronAPI", electronAPI);

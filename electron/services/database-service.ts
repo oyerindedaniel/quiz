@@ -1,6 +1,7 @@
 import { LocalDatabaseService } from "@/lib/database/local-database-service";
 import { RemoteDatabaseService } from "@/lib/database/remote-database-service";
 import { CSVImportService } from "@/lib/import/csv-import-service";
+import { SyncEngine } from "@/lib/sync/sync-engine";
 import type {
   User,
   Subject,
@@ -17,10 +18,12 @@ export class MainDatabaseService {
   private localDb: LocalDatabaseService;
   private remoteDb: RemoteDatabaseService | null = null;
   private csvImporter: CSVImportService;
+  private syncEngine: SyncEngine;
 
   constructor() {
     this.localDb = LocalDatabaseService.getInstance();
     this.csvImporter = new CSVImportService();
+    this.syncEngine = SyncEngine.getInstance();
   }
 
   async initialize(): Promise<void> {
@@ -38,6 +41,17 @@ export class MainDatabaseService {
       } catch (error) {
         console.warn(
           "Main process: Remote database unavailable:",
+          error instanceof Error ? error.message : "Unknown error"
+        );
+      }
+
+      // Initialize sync engine
+      try {
+        await this.syncEngine.initialize(this.remoteDb || undefined);
+        console.log("Main process: Sync engine initialized");
+      } catch (error) {
+        console.warn(
+          "Main process: Sync engine initialization failed:",
           error instanceof Error ? error.message : "Unknown error"
         );
       }
@@ -151,6 +165,13 @@ export class MainDatabaseService {
         score,
         sessionDuration,
       });
+
+      // Trigger critical sync for quiz submission
+      try {
+        await this.syncEngine.triggerSync("quiz_submission");
+      } catch (syncError) {
+        console.warn("Quiz sync failed (data saved locally):", syncError);
+      }
     } catch (error) {
       console.error("Failed to submit quiz:", error);
       throw new Error("Failed to submit quiz");
@@ -176,16 +197,13 @@ export class MainDatabaseService {
     return this.remoteDb?.isConnected() ?? false;
   }
 
-  // Sync operations (when remote database is available)
-  async syncToRemote(): Promise<{ success: boolean; error?: string }> {
-    if (!this.remoteDb) {
-      return { success: false, error: "Remote database not available" };
-    }
-
+  // Sync operations
+  async triggerSync(
+    trigger?: "manual" | "startup" | "app_close"
+  ): Promise<{ success: boolean; error?: string }> {
     try {
-      // TODO: Implement sync logic between local and remote using both services
-      console.log("Sync to remote database not yet implemented");
-      return { success: true };
+      const result = await this.syncEngine.triggerSync(trigger || "manual");
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -194,10 +212,36 @@ export class MainDatabaseService {
     }
   }
 
+  async getSyncStatus(): Promise<any> {
+    return this.syncEngine.getSyncStatus();
+  }
+
+  // Queue sync operation for later processing
+  async queueSyncOperation<T extends Record<string, unknown>>(operation: {
+    type: "push" | "pull" | "conflict_resolution";
+    tableName: string;
+    recordId: string;
+    data: T;
+  }): Promise<void> {
+    try {
+      await this.syncEngine.queueOperation(operation);
+    } catch (error) {
+      console.warn("Failed to queue sync operation:", error);
+    }
+  }
+
   async cleanup(): Promise<void> {
     console.log("MainDatabaseService: Starting cleanup...");
 
     try {
+      // Cleanup sync engine first (may trigger final sync)
+      try {
+        await this.syncEngine.cleanup();
+        console.log("MainDatabaseService: Sync engine cleaned up");
+      } catch (error) {
+        console.warn("MainDatabaseService: Sync engine cleanup failed:", error);
+      }
+
       if (this.remoteDb) {
         await this.remoteDb.cleanup();
         console.log("MainDatabaseService: Remote database cleaned up");

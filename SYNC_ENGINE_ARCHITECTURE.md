@@ -90,7 +90,7 @@ When a user first installs and launches the quiz application, several critical p
 - **Process**: App performs connectivity check to NeonDB
 - **Outcomes**:
   - **Online**: Proceed with initial data pull
-  - **Offline**: Set up for manual data seeding or wait for connectivity
+  - **Offline**: Set up for manual data seeding
 
 #### 3. **Initial Data Seeding Strategy**
 
@@ -142,7 +142,7 @@ The sync engine operates on the principle of **eventual consistency** - all data
 2. **Event-Driven Synchronization**
 
    - Sync operations triggered by specific events, not continuous polling
-   - Efficient resource usage and battery life preservation
+   - Efficient resource usage
    - Responsive to user actions and system changes
    - **Concurrent Operations**: Background sync doesn't block user interface
 
@@ -162,7 +162,7 @@ The sync engine operates on the principle of **eventual consistency** - all data
 
 - Quiz attempts (completed and in-progress)
 - User-generated answers
-- Session logs and performance metrics
+- Session logs and performance metrics (ignore performance metrics for now)
 - Error reports and diagnostics
 
 **When Triggered**:
@@ -184,7 +184,7 @@ The sync engine operates on the principle of **eventual consistency** - all data
 
 **Data Types Pulled**:
 
-- New questions added by administrators
+- New questions added by administrators (for now ignore adminstrators ui, any chnages need i will edit right from neondb)
 - Updated subject information
 - User account modifications
 - System announcements
@@ -213,7 +213,7 @@ The sync engine operates on the principle of **eventual consistency** - all data
 - **Priority**: Highest
 - **Retry Policy**: Aggressive (immediate retry, up to 10 attempts)
 - **Fallback**: Store in persistent queue, sync when possible
-- **User Impact**: Visible sync status, blocking operations if needed
+- **User Impact**: Visible sync status
 - **SQLite Strategy**:
   - Force WAL checkpoint before sync
   - Verify transaction commit status
@@ -224,7 +224,7 @@ The sync engine operates on the principle of **eventual consistency** - all data
 **Examples**: In-progress quiz answers, session data, user preferences
 
 - **Priority**: Medium
-- **Retry Policy**: Moderate (retry every 5 minutes, up to 5 attempts)
+- **Retry Policy**: Moderate (retry every quarter interval based on quiz duration, up to 5 attempts)
 - **Fallback**: Batch with next sync operation
 - **User Impact**: Background processing, no user blocking
 - **SQLite Strategy**:
@@ -291,12 +291,12 @@ Conflicts occur when the same piece of data has been modified in both local and 
 
 **Type 1: User Data Conflicts**
 
-- **Scenario**: Student submits quiz while admin modifies questions
+- **Scenario**: Student submits quiz while admin modifies questions (note if admin modify question it shoud not count as a conflict ones user as started a quiz attempt unless the user quiz attempt for that subject is cleared, for subsequent user taking that test you can update the lastest question can show)
 - **Resolution**: User submission always wins (immutable principle)
 - **Rationale**: Protects student work and maintains academic integrity
 - **SQLite Handling**: Ensure foreign keys remain valid during resolution
 
-**Type 2: Administrative Conflicts**
+**Type 2: Administrative Conflicts** (ignore)
 
 - **Scenario**: Multiple admins modify same question simultaneously
 - **Resolution**: Last-write-wins with timestamp comparison
@@ -392,11 +392,11 @@ Conflicts occur when the same piece of data has been modified in both local and 
 
 - **Input Validation**: Verify all data before sync operations
 - **Connection Testing**: Confirm network stability before major operations
-- **Resource Monitoring**: Ensure sufficient storage and memory
+- **Resource Monitoring**: Ensure sufficient storage and memory (ignore)
 - **Version Compatibility**: Check remote system compatibility
 - **SQLite Health**: Monitor WAL file size and database integrity
 
-#### Layer 2: Detection
+#### Layer 2: Detection (ignore)
 
 **Goal**: Quickly identify when errors occur
 
@@ -584,7 +584,7 @@ Dynamically adjust sync frequency based on user behavior, network conditions, da
 
 ## 🌐 Real-World Scenarios & Edge Cases
 
-### Scenario 1: School Network Restrictions
+### Scenario 1: School Network Restrictions (ignore)
 
 **Situation**: School firewall blocks access to cloud database
 
@@ -621,7 +621,7 @@ Dynamically adjust sync frequency based on user behavior, network conditions, da
 - **User Guidance**: Clear instructions for reconnection process
 - **WAL Management**: Periodic checkpoints to manage file size
 
-### Scenario 3: Simultaneous Multi-Device Usage
+### Scenario 3: Simultaneous Multi-Device Usage (ignore)
 
 **Situation**: Student uses app on multiple devices concurrently
 
@@ -763,50 +763,6 @@ Dynamically adjust sync frequency based on user behavior, network conditions, da
 - **Error Report Frequency**: Low volume of sync-related issues
 - **Feature Usage**: High adoption of sync-dependent features
 - **Retention Rates**: Users continue using app despite connectivity issues
-
----
-
-## 📝 Implementation Phases & Milestones
-
-### Phase 1: Foundation (Weeks 1-2)
-
-- Basic sync service architecture
-- Local database change tracking
-- Network connectivity detection
-- Simple push/pull operations
-- **SQLite Integration**: WAL mode optimization and foreign key handling
-
-### Phase 2: Reliability (Weeks 3-4)
-
-- Error handling and retry mechanisms
-- Conflict detection and resolution
-- Queue management for failed operations
-- Basic user status indicators
-- **Database Features**: Transaction verification and integrity checks
-
-### Phase 3: Performance (Weeks 5-6)
-
-- Batching and delta sync optimization
-- Adaptive sync intervals
-- Background operation management
-- Advanced conflict resolution
-- **SQLite Optimization**: Cache tuning and WAL checkpoint management
-
-### Phase 4: User Experience (Weeks 7-8)
-
-- Comprehensive status communication
-- User control options
-- Error recovery assistance
-- Performance monitoring integration
-- **Database Monitoring**: Real-time SQLite performance metrics
-
-### Phase 5: Validation & Polish (Weeks 9-10)
-
-- Real-world testing scenarios
-- Performance optimization
-- Documentation and training materials
-- Deployment preparation
-- **Database Validation**: Comprehensive integrity testing
 
 ---
 
