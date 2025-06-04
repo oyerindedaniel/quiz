@@ -1,15 +1,28 @@
-import { LocalDatabaseService } from "../database/local-database-service";
-import { generateUUID } from "../utils";
-import { ALL_STUDENTS } from "../constants/students";
+import { LocalDatabaseService } from "../database/local-database-service.js";
+import { generateUUID } from "../../utils/lib.js";
+import { ALL_STUDENTS } from "../constants/students.js";
 import bcrypt from "bcryptjs";
+import type { UserSeedData, SeedResult, Class, Gender } from "@/types/app";
+import { RemoteDatabaseService } from "../database/remote-database-service.js";
 import { v4 as uuidv4 } from "uuid";
-import type { UserSeedData, SeedResult, Class, Gender } from "@/types";
+
+interface DatabaseServiceOptions {
+  isRemote?: boolean;
+}
 
 export class UserSeedingService {
   private localDb: LocalDatabaseService;
+  private remoteDb: RemoteDatabaseService;
+  private isRemote: boolean;
 
-  constructor() {
+  constructor(options: DatabaseServiceOptions = {}) {
     this.localDb = LocalDatabaseService.getInstance();
+    this.remoteDb = RemoteDatabaseService.getInstance();
+    this.isRemote = options.isRemote || false;
+  }
+
+  private generateUUID(): string {
+    return uuidv4();
   }
 
   /**
@@ -21,9 +34,9 @@ export class UserSeedingService {
 
     for (const userData of users) {
       try {
-        const existing = await this.localDb.findUserByStudentCode(
-          userData.studentCode
-        );
+        const existing = this.isRemote
+          ? await this.remoteDb.findUserByStudentCode(userData.studentCode)
+          : await this.localDb.findUserByStudentCode(userData.studentCode);
         if (existing) {
           results.skipped++;
           continue;
@@ -31,14 +44,23 @@ export class UserSeedingService {
 
         const passwordHash = await bcrypt.hash(userData.pin, 10);
 
-        await this.localDb.createUser({
-          id: generateUUID(),
-          name: userData.name,
-          studentCode: userData.studentCode,
-          passwordHash,
-          class: userData.class,
-          gender: userData.gender,
-        });
+        await (this.isRemote
+          ? this.remoteDb.createUser({
+              id: this.generateUUID(),
+              name: userData.name,
+              studentCode: userData.studentCode,
+              passwordHash,
+              class: userData.class,
+              gender: userData.gender,
+            })
+          : this.localDb.createUser({
+              id: generateUUID(),
+              name: userData.name,
+              studentCode: userData.studentCode,
+              passwordHash,
+              class: userData.class,
+              gender: userData.gender,
+            }));
 
         results.created++;
       } catch (error) {
@@ -116,22 +138,29 @@ export class UserSeedingService {
 
     for (const subjectData of ALL_SUBJECTS) {
       try {
-        const existing = await this.localDb.findSubjectByCode(
-          subjectData.subjectCode
-        );
+        const existing = this.isRemote
+          ? await this.remoteDb.findSubjectByCode(subjectData.subjectCode)
+          : await this.localDb.findSubjectByCode(subjectData.subjectCode);
         if (existing) {
           result.existing++;
           continue;
         }
 
-        await this.localDb.createSubject({
-          id: uuidv4(),
-          name: subjectData.name,
-          subjectCode: subjectData.subjectCode,
-          description: subjectData.description,
-          class: subjectData.class,
-          totalQuestions: 0,
-        });
+        await (this.isRemote
+          ? this.remoteDb.createSubject({
+              id: uuidv4(),
+              name: subjectData.name,
+              subjectCode: subjectData.subjectCode,
+              description: subjectData.description,
+              class: subjectData.class,
+            })
+          : this.localDb.createSubject({
+              id: uuidv4(),
+              name: subjectData.name,
+              subjectCode: subjectData.subjectCode,
+              description: subjectData.description,
+              class: subjectData.class,
+            }));
 
         result.created++;
       } catch (error) {

@@ -1,7 +1,7 @@
-import { LocalDatabaseService } from "@/lib/database/local-database-service";
-import { RemoteDatabaseService } from "@/lib/database/remote-database-service";
-import { CSVImportService } from "@/lib/import/csv-import-service";
-import { SyncEngine } from "@/lib/sync/sync-engine";
+import { LocalDatabaseService } from "../../src/lib/database/local-database-service.js";
+import { RemoteDatabaseService } from "../../src/lib/database/remote-database-service.js";
+import { CSVImportService } from "../../src/lib/import/csv-import-service.js";
+import { SyncEngine } from "../../src/lib/sync/sync-engine.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import type {
@@ -13,7 +13,7 @@ import type {
   NewSubject,
   NewQuestion,
   NewQuizAttempt,
-} from "@/lib/database/local-schema";
+} from "../../src/lib/database/local-schema.js";
 import {
   ImportResult,
   AuthResult,
@@ -25,9 +25,9 @@ import {
   AnalyticsData,
   CreateAdminData,
   AdminCreationResult,
-} from "@/types";
-import { SyncTrigger } from "@/lib/sync/sync-engine";
-import type { SyncOperationType } from "@/types";
+  SyncOperationType,
+} from "../../src/types/app.js";
+import { SyncTrigger } from "../../src/lib/sync/sync-engine.js";
 
 export class MainDatabaseService {
   private localDb: LocalDatabaseService;
@@ -50,6 +50,7 @@ export class MainDatabaseService {
       try {
         if (process.env.NEON_DATABASE_URL) {
           this.remoteDb = RemoteDatabaseService.getInstance();
+          console.log({ sent: this.remoteDb });
           await this.remoteDb.initialize(process.env.NEON_DATABASE_URL);
           console.log("Main process: Remote database service initialized");
         }
@@ -412,6 +413,7 @@ export class MainDatabaseService {
   ): Promise<AdminAuthResult> {
     try {
       if (!this.remoteDb || !this.remoteDb.isConnected()) {
+        console.log({ dhhd: process.env.NEON_DATABASE_URL });
         return {
           success: false,
           error: "Remote authentication service unavailable",
@@ -575,16 +577,69 @@ export class MainDatabaseService {
     return this.remoteDb.deleteQuizAttempts(studentCode, subjectCode);
   }
 
-  // TOD0: sync
   /**
-   * Sync questions from remote database to local database
-   * Uses subjectCode for duplicate detection and replacement
+   * Delete quiz attempts from local database
+   * This allows users to retake tests locally after admin intervention
    */
-  async syncQuestions(): Promise<{
+  async deleteLocalQuizAttempts(
+    studentCode: string,
+    subjectCode: string
+  ): Promise<{ success: boolean; error?: string; deletedCount?: number }> {
+    return this.localDb.deleteQuizAttempts(studentCode, subjectCode);
+  }
+
+  /**
+   * Bulk create questions directly to remote database
+   */
+  async remoteBulkCreateQuestions(
+    questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
+  ): Promise<{ success: boolean; created: number; error?: string }> {
+    if (!this.remoteDb || !this.remoteDb.isConnected()) {
+      return {
+        success: false,
+        created: 0,
+        error: "Remote database not available",
+      };
+    }
+
+    try {
+      const result = await this.remoteDb.bulkCreateQuestions(questions);
+      console.log(
+        `Remote bulk created ${result.created} questions successfully`
+      );
+      return result;
+    } catch (error) {
+      console.error("Remote bulk question creation error:", error);
+      return {
+        success: false,
+        created: 0,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * sync questions from remote database to local database
+   */
+  async syncQuestions(options?: {
+    replaceExisting?: boolean; // If true, completely replace local questions for each subject
+    subjectCodes?: string[]; // If provided, only sync specific subjects
+  }): Promise<{
     success: boolean;
     questionsPulled?: number;
+    subjectsSynced?: number;
     error?: string;
+    details?: {
+      newSubjects: number;
+      updatedQuestions: number;
+      newQuestions: number;
+      skippedQuestions: number;
+      replacedSubjects: number;
+    };
   }> {
+    const replaceExisting = options?.replaceExisting || false;
+    const targetSubjectCodes = options?.subjectCodes;
+
     try {
       if (!this.remoteDb || !this.remoteDb.isConnected()) {
         return {
@@ -593,96 +648,247 @@ export class MainDatabaseService {
         };
       }
 
-      // Get all active questions from remote database
-      const remoteQuestions = await this.remoteDb.getAllQuestions();
+      console.log("Starting enhanced question sync...", {
+        replaceExisting,
+        targetSubjectCodes,
+      });
+
+      const [remoteQuestions, remoteSubjects] = await Promise.all([
+        this.remoteDb.getAllQuestions(),
+        this.remoteDb.getAllSubjects(),
+      ]);
 
       if (remoteQuestions.length === 0) {
         return {
           success: true,
           questionsPulled: 0,
+          subjectsSynced: 0,
           error: "No questions found in remote database",
         };
       }
 
-      let syncedCount = 0;
+      console.log(
+        `Remote data: ${remoteQuestions.length} questions, ${remoteSubjects.length} subjects`
+      );
 
-      for (const remoteQuestion of remoteQuestions) {
+      let filteredQuestions = remoteQuestions;
+      if (targetSubjectCodes && targetSubjectCodes.length > 0) {
+        filteredQuestions = remoteQuestions.filter((q) =>
+          targetSubjectCodes.includes(q.subjectCode)
+        );
+        console.log(
+          `Filtered to ${
+            filteredQuestions.length
+          } questions for subjects: ${targetSubjectCodes.join(", ")}`
+        );
+      }
+
+      const questionsBySubject = new Map<string, typeof remoteQuestions>();
+      filteredQuestions.forEach((question) => {
+        const subjectCode = question.subjectCode;
+        if (!questionsBySubject.has(subjectCode)) {
+          questionsBySubject.set(subjectCode, []);
+        }
+        questionsBySubject.get(subjectCode)!.push(question);
+      });
+
+      let totalSyncedQuestions = 0;
+      let newSubjectsCreated = 0;
+      let updatedQuestions = 0;
+      let newQuestions = 0;
+      let skippedQuestions = 0;
+      let replacedSubjects = 0;
+
+      for (const [subjectCode, subjectQuestions] of questionsBySubject) {
         try {
-          // Check if question already exists in local DB by subjectCode and questionOrder
-          const existingQuestion =
-            await this.localDb.findQuestionBySubjectCodeAndOrder(
-              remoteQuestion.subjectCode,
-              remoteQuestion.questionOrder
+          console.log(
+            `Processing ${subjectQuestions.length} questions for subject: ${subjectCode}`
+          );
+
+          let localSubject = await this.localDb.findSubjectByCode(subjectCode);
+
+          if (!localSubject) {
+            const remoteSubject = remoteSubjects.find(
+              (s) => s.subjectCode === subjectCode
             );
-
-          if (existingQuestion) {
-            // Update existing question
-            await this.localDb.updateQuestion(existingQuestion.id, {
-              text: remoteQuestion.text,
-              options: JSON.stringify(remoteQuestion.options),
-              answer: remoteQuestion.answer,
-              updatedAt: new Date().toISOString(),
-            });
-          } else {
-            // Find or create subject first
-            let subject = await this.localDb.findSubjectByCode(
-              remoteQuestion.subjectCode
-            );
-
-            if (!subject) {
-              // Create subject if it doesn't exist
-              const remoteSubject = await this.remoteDb.findSubjectByCode(
-                remoteQuestion.subjectCode
-              );
-              if (remoteSubject) {
-                await this.localDb.createSubject({
-                  id: remoteSubject.id,
-                  name: remoteSubject.name,
-                  subjectCode: remoteSubject.subjectCode,
-                  description: remoteSubject.description,
-                  class: remoteSubject.class,
-                  totalQuestions: remoteSubject.totalQuestions,
-                });
-                subject = await this.localDb.findSubjectByCode(
-                  remoteQuestion.subjectCode
-                );
-              } else {
-                console.warn(
-                  `Subject not found for question: ${remoteQuestion.subjectCode}`
-                );
-                continue;
-              }
-            }
-
-            if (subject) {
-              // Create new question
-              await this.localDb.createQuestion({
-                id: remoteQuestion.id,
-                subjectId: subject.id,
-                subjectCode: remoteQuestion.subjectCode,
-                text: remoteQuestion.text,
-                options: JSON.stringify(remoteQuestion.options),
-                answer: remoteQuestion.answer,
-                questionOrder: remoteQuestion.questionOrder,
+            if (remoteSubject) {
+              await this.localDb.createSubject({
+                id: remoteSubject.id,
+                name: remoteSubject.name,
+                subjectCode: remoteSubject.subjectCode,
+                description: remoteSubject.description || "",
+                class: remoteSubject.class,
               });
+              localSubject = await this.localDb.findSubjectByCode(subjectCode);
+              newSubjectsCreated++;
+              console.log(`Created new subject: ${subjectCode}`);
+            } else {
+              console.warn(
+                `Remote subject not found for code: ${subjectCode}, skipping questions`
+              );
+              skippedQuestions += subjectQuestions.length;
+              continue;
             }
           }
 
-          syncedCount++;
-        } catch (questionError) {
-          console.warn(
-            `Failed to sync question ${remoteQuestion.id}:`,
-            questionError
+          if (!localSubject) {
+            console.warn(`Failed to create/find local subject: ${subjectCode}`);
+            skippedQuestions += subjectQuestions.length;
+            continue;
+          }
+
+          // Use transaction for bulk operations on this subject
+          await this.localDb.transaction(async (tx) => {
+            // If replace mode, delete all existing questions for this subject first
+            if (replaceExisting) {
+              const deletedCount =
+                await this.localDb.deleteQuestionsBySubjectCode(subjectCode);
+              console.log(
+                `Deleted ${deletedCount} existing questions for ${subjectCode}`
+              );
+              replacedSubjects++;
+            }
+
+            const questionsToCreate: Array<
+              Omit<NewQuestion, "createdAt" | "updatedAt">
+            > = [];
+            const questionsToUpdate: Array<{
+              id: string;
+              updates: Partial<Omit<NewQuestion, "id" | "createdAt">>;
+            }> = [];
+
+            for (const remoteQuestion of subjectQuestions) {
+              try {
+                let shouldCreate = true;
+
+                if (!replaceExisting) {
+                  // Check if question exists by subject code and question order
+                  const existingQuestion =
+                    await this.localDb.findQuestionBySubjectCodeAndOrder(
+                      remoteQuestion.subjectCode,
+                      remoteQuestion.questionOrder
+                    );
+
+                  if (existingQuestion) {
+                    questionsToUpdate.push({
+                      id: existingQuestion.id,
+                      updates: {
+                        text: remoteQuestion.text,
+                        options: JSON.stringify(remoteQuestion.options),
+                        answer: remoteQuestion.answer,
+                        explanation: remoteQuestion.explanation || null,
+                      },
+                    });
+                    shouldCreate = false;
+                  }
+                }
+
+                if (shouldCreate) {
+                  questionsToCreate.push({
+                    id: remoteQuestion.id,
+                    subjectId: localSubject.id,
+                    subjectCode: remoteQuestion.subjectCode,
+                    text: remoteQuestion.text,
+                    options: JSON.stringify(remoteQuestion.options),
+                    answer: remoteQuestion.answer,
+                    questionOrder: remoteQuestion.questionOrder,
+                    explanation: remoteQuestion.explanation || null,
+                    isActive: true,
+                  });
+                }
+              } catch (questionProcessError) {
+                console.warn(
+                  `Error processing question ${remoteQuestion.id}:`,
+                  questionProcessError
+                );
+                skippedQuestions++;
+              }
+            }
+
+            // Bulk create new questions for this subject
+            if (questionsToCreate.length > 0) {
+              try {
+                const createResult = await this.localDb.bulkCreateQuestions(
+                  questionsToCreate
+                );
+                if (createResult.success) {
+                  newQuestions += createResult.created;
+                  console.log(
+                    `Bulk created ${createResult.created} questions for ${subjectCode}`
+                  );
+                } else {
+                  console.error(
+                    `Bulk create failed for ${subjectCode}:`,
+                    createResult.error
+                  );
+                  skippedQuestions += questionsToCreate.length;
+                }
+              } catch (bulkCreateError) {
+                console.error(
+                  `Bulk create error for ${subjectCode}:`,
+                  bulkCreateError
+                );
+                skippedQuestions += questionsToCreate.length;
+              }
+            }
+
+            // Bulk update existing questions for this subject (only in update mode)
+            if (!replaceExisting && questionsToUpdate.length > 0) {
+              try {
+                for (const { id, updates } of questionsToUpdate) {
+                  await this.localDb.updateQuestion(id, updates);
+                }
+                updatedQuestions += questionsToUpdate.length;
+                console.log(
+                  `Updated ${questionsToUpdate.length} questions for ${subjectCode}`
+                );
+              } catch (bulkUpdateError) {
+                console.error(
+                  `Bulk update error for ${subjectCode}:`,
+                  bulkUpdateError
+                );
+                skippedQuestions += questionsToUpdate.length;
+              }
+            }
+
+            totalSyncedQuestions +=
+              questionsToCreate.length + questionsToUpdate.length;
+
+            try {
+              await this.localDb.updateSubjectQuestionCount(subjectCode);
+            } catch (countUpdateError) {
+              console.warn(
+                `Failed to update question count for ${subjectCode}:`,
+                countUpdateError
+              );
+            }
+          });
+        } catch (subjectError) {
+          console.error(
+            `Failed to process subject ${subjectCode}:`,
+            subjectError
           );
+          skippedQuestions += subjectQuestions.length;
         }
       }
 
-      return {
+      const result = {
         success: true,
-        questionsPulled: syncedCount,
+        questionsPulled: totalSyncedQuestions,
+        subjectsSynced: questionsBySubject.size,
+        details: {
+          newSubjects: newSubjectsCreated,
+          updatedQuestions,
+          newQuestions,
+          skippedQuestions,
+          replacedSubjects,
+        },
       };
+
+      console.log("Enhanced question sync completed:", result);
+      return result;
     } catch (error) {
-      console.error("Sync questions error:", error);
+      console.error("Enhanced sync questions error:", error);
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown sync error",

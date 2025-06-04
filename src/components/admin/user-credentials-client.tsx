@@ -18,7 +18,7 @@ import { useAdminData } from "@/hooks/use-admin-data";
 import { useFilteredData } from "@/hooks/use-filtered-data";
 import { toast } from "sonner";
 import { Eye, EyeOff, Copy, Download, Search } from "lucide-react";
-import type { UserSeedData, Class } from "@/types";
+import type { UserSeedData, Class } from "@/types/app";
 
 export function UserCredentialsClient() {
   const { admin, isLoading: authLoading } = useAdminAuth();

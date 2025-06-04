@@ -1,9 +1,9 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/lib";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { SubmissionResult, User, Subject } from "@/types";
+import type { SubmissionResult, User, Subject } from "@/types/app";
 
 interface QuizResultsProps {
   result: SubmissionResult;

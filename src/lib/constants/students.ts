@@ -3,7 +3,7 @@
  * Contains class lists and subject information for seeding
  */
 
-import type { StudentData, SubjectData, Class, Gender } from "@/types";
+import type { StudentData, SubjectData, Class, Gender } from "@/types/app";
 
 /**
  * BASIC 5 Class Student List
@@ -48,6 +48,7 @@ export const SS2_STUDENTS: Omit<StudentData, "studentCode">[] = [
   { name: "AWOLUMATE DANIEL", gender: "MALE", class: "SS2" },
   { name: "JOHN RACHEAL TEMITOPE", gender: "FEMALE", class: "SS2" },
   { name: "ALABI SAMUEL OREOFEOLUWA", gender: "MALE", class: "SS2" },
+  { name: "OYERINDE DANIEL", gender: "MALE", class: "SS2" },
 ];
 
 /**

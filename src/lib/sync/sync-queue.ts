@@ -1,13 +1,13 @@
-import { LocalDatabaseService } from "@/lib/database/local-database-service";
-import { RemoteDatabaseService } from "@/lib/database/remote-database-service";
-import { normalizeError, SyncError } from "@/lib/error";
+import { LocalDatabaseService } from "../database/local-database-service.js";
+import { RemoteDatabaseService } from "../database/remote-database-service.js";
+import { normalizeError, SyncError } from "../../error/err.js";
 import type {
   SyncOperation,
   SyncResult,
   QuizAttempt,
   SyncOperationType,
-} from "@/types";
-import type { SyncTier } from "./sync-engine";
+} from "../../types/app.js";
+import type { SyncTier } from "./sync-engine.js";
 
 interface QueuedOperation<T = Record<string, unknown>>
   extends SyncOperation<T> {

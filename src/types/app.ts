@@ -309,6 +309,14 @@ export interface QuizAPI {
   bulkCreateQuestions: (
     questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
   ) => Promise<{ success: boolean; created: number; error?: string }>;
+  deleteQuizAttempts: (
+    studentCode: string,
+    subjectCode: string
+  ) => Promise<{
+    success: boolean;
+    error?: string;
+    deletedCount?: number;
+  }>;
 }
 
 // User API Types
@@ -347,10 +355,21 @@ export interface SyncAPI {
     recordId: string;
     data: T;
   }) => Promise<void>;
-  syncQuestions: () => Promise<{
+  syncQuestions: (options?: {
+    replaceExisting?: boolean;
+    subjectCodes?: string[];
+  }) => Promise<{
     success: boolean;
     questionsPulled?: number;
+    subjectsSynced?: number;
     error?: string;
+    details?: {
+      newSubjects: number;
+      updatedQuestions: number;
+      newQuestions: number;
+      skippedQuestions: number;
+      replacedSubjects: number;
+    };
   }>;
 }
 
@@ -421,6 +440,13 @@ export interface AdminAPI {
   }>;
 }
 
+// Remote API Types
+export interface RemoteAPI {
+  bulkCreateQuestions: (
+    questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
+  ) => Promise<{ success: boolean; created: number; error?: string }>;
+}
+
 export interface ElectronAPI {
   database: DatabaseAPI;
   quiz: QuizAPI;
@@ -432,6 +458,7 @@ export interface ElectronAPI {
   seed: SeedAPI;
   auth: AuthAPI;
   admin: AdminAPI;
+  remote: RemoteAPI;
 }
 
 declare global {

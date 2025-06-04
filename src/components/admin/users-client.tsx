@@ -56,7 +56,6 @@ interface UserWithAttempts {
 }
 
 export function UsersClient() {
-  // Use the admin data hook
   const {
     data: users,
     isLoading,
@@ -67,7 +66,6 @@ export function UsersClient() {
     refreshInterval: 30000,
   });
 
-  // Use the filtered data hook
   const {
     filteredData: filteredUsers,
     searchTerm,
@@ -165,7 +163,6 @@ export function UsersClient() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 font-sans">Users</h1>
@@ -187,7 +184,6 @@ export function UsersClient() {
         </Button>
       </div>
 
-      {/* Error Alert */}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -195,7 +191,6 @@ export function UsersClient() {
         </Alert>
       )}
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center">
@@ -262,7 +257,6 @@ export function UsersClient() {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1">
@@ -297,7 +291,6 @@ export function UsersClient() {
         </div>
       </div>
 
-      {/* Users Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         <div className="p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900 font-sans">

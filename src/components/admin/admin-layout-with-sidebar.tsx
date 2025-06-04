@@ -142,7 +142,7 @@ const navigationData = [
 
 export function AdminLayoutWithSidebar({ children }: AdminLayoutProps) {
   const { admin, isLoading, logout } = useAdminAuth({
-    redirectPath: "/admin/login",
+    redirectPath: "/",
   });
   const pathname = usePathname();
 

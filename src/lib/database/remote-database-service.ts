@@ -1,6 +1,6 @@
 import { eq, and } from "drizzle-orm";
-import { NeonManager } from "./neon";
-import { remoteSchema } from "./remote-schema";
+import { NeonManager } from "./neon.js";
+import { remoteSchema } from "./remote-schema.js";
 import type {
   RemoteUser,
   NewRemoteUser,
@@ -11,10 +11,17 @@ import type {
   RemoteQuizAttempt,
   NewRemoteQuizAttempt,
   RemoteAdmin,
-} from "./remote-schema";
-import type { QuizAttempt } from "./local-schema";
+} from "./remote-schema.js";
+import type { QuizAttempt } from "./local-schema.js";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import type { SubjectWithStats, UserWithAttempts, AdminRole } from "@/types";
+import type {
+  SubjectWithStats,
+  UserWithAttempts,
+  AdminRole,
+} from "@/types/app";
+
+import { config } from "dotenv";
+config();
 
 interface ModifiedRecordsResult {
   id: string;
@@ -27,7 +34,9 @@ export class RemoteDatabaseService {
   private db: NodePgDatabase<typeof remoteSchema> | null = null;
   private neonManager: NeonManager | null = null;
 
-  private constructor() {}
+  private constructor() {
+    // this.initialize(process.env.NEON_DATABASE_URL);
+  }
 
   public static getInstance(): RemoteDatabaseService {
     if (!RemoteDatabaseService.instance) {
@@ -192,8 +201,49 @@ export class RemoteDatabaseService {
     questionData: Omit<NewRemoteQuestion, "createdAt" | "updatedAt">
   ): Promise<void> {
     const db = this.getDb();
+    const now = new Date();
 
-    await db.insert(remoteSchema.questions).values(questionData);
+    await db.insert(remoteSchema.questions).values({
+      ...questionData,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  /**
+   * Bulk create questions for better performance
+   */
+  async bulkCreateQuestions(
+    questions: Omit<NewRemoteQuestion, "createdAt" | "updatedAt">[]
+  ): Promise<{ success: boolean; created: number; error?: string }> {
+    if (questions.length === 0) {
+      return { success: true, created: 0 };
+    }
+
+    const db = this.getDb();
+    const now = new Date();
+
+    try {
+      const questionsWithTimestamps = questions.map((question) => ({
+        ...question,
+        createdAt: now,
+        updatedAt: now,
+      }));
+
+      await db.insert(remoteSchema.questions).values(questionsWithTimestamps);
+
+      return {
+        success: true,
+        created: questions.length,
+      };
+    } catch (error) {
+      console.error("Bulk create questions error:", error);
+      return {
+        success: false,
+        created: 0,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
   }
 
   async updateQuestion(

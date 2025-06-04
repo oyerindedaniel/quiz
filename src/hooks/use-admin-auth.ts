@@ -21,7 +21,7 @@ export function useAdminAuth(
   options: UseAdminAuthOptions = {}
 ): UseAdminAuthReturn {
   const {
-    redirectPath = "/admin/login",
+    redirectPath = "/",
     requireElectron = false,
     skipRedirect = false,
   } = options;

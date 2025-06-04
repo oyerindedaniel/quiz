@@ -114,7 +114,7 @@ export function CreateUserClient() {
     setDeleteSuccess(false);
 
     try {
-      const result = await dbService.deleteQuizAttempts(
+      const result = await dbService.deleteLocalQuizAttempts(
         deleteFormData.studentCode,
         deleteFormData.subjectCode
       );

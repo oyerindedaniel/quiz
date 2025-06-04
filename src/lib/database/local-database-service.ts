@@ -1,6 +1,6 @@
-import { eq, and } from "drizzle-orm";
-import { createSQLiteManager } from "./sqlite";
-import { localSchema } from "./local-schema";
+import { eq, and, sql } from "drizzle-orm";
+import { SQLiteManager } from "./sqlite.js";
+import { localSchema } from "./local-schema.js";
 import type {
   User,
   NewUser,
@@ -10,14 +10,14 @@ import type {
   NewQuestion,
   QuizAttempt,
   NewQuizAttempt,
-} from "./local-schema";
+} from "./local-schema.js";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { isElectron } from "@/lib/utils";
+import { isElectron } from "../../utils/lib.js";
 
 export class LocalDatabaseService {
   private static instance: LocalDatabaseService;
   private db: BetterSQLite3Database<typeof localSchema> | null = null;
-  private sqliteManager: ReturnType<typeof createSQLiteManager> | null = null;
+  private sqliteManager: SQLiteManager | null = null;
 
   private constructor() {}
 
@@ -36,7 +36,20 @@ export class LocalDatabaseService {
       return;
     }
 
-    this.sqliteManager = createSQLiteManager();
+    let dbPath: string;
+    if (isElectron()) {
+      const userDataPath = await window.electronAPI.app.getPath("userData");
+      if (userDataPath) {
+        dbPath = `${userDataPath}/quiz_app.db`;
+      } else {
+        dbPath = "quiz_app.db";
+      }
+    } else {
+      // Development/testing fallback
+      dbPath = "./quiz_app.db";
+    }
+
+    this.sqliteManager = SQLiteManager.getInstance(dbPath);
     this.db = await this.sqliteManager.initialize();
   }
 
@@ -53,7 +66,7 @@ export class LocalDatabaseService {
   /**
    * Get the SQLite manager for raw SQL operations
    */
-  private getSqliteManager(): ReturnType<typeof createSQLiteManager> {
+  private getSqliteManager(): SQLiteManager {
     if (!this.sqliteManager) {
       throw new Error("Database not initialized. Call initialize() first.");
     }
@@ -379,6 +392,137 @@ export class LocalDatabaseService {
         updatedAt: new Date().toISOString(),
       })
       .where(eq(localSchema.questions.id, questionId));
+  }
+
+  /**
+   * Delete all questions for a specific subject code
+   * Useful for complete subject re-sync
+   */
+  async deleteQuestionsBySubjectCode(subjectCode: string): Promise<number> {
+    const db = this.getDb();
+
+    const result = await db
+      .delete(localSchema.questions)
+      .where(eq(localSchema.questions.subjectCode, subjectCode))
+      .returning({ id: localSchema.questions.id });
+
+    return result.length;
+  }
+
+  /**
+   * Get all questions for a subject by subject code
+   */
+  async getQuestionsBySubjectCode(subjectCode: string): Promise<Question[]> {
+    const db = this.getDb();
+    return db
+      .select()
+      .from(localSchema.questions)
+      .where(
+        and(
+          eq(localSchema.questions.subjectCode, subjectCode),
+          eq(localSchema.questions.isActive, true)
+        )
+      )
+      .orderBy(localSchema.questions.questionOrder);
+  }
+
+  /**
+   * Count questions for a subject by subject code
+   */
+  async countQuestionsBySubjectCode(subjectCode: string): Promise<number> {
+    const db = this.getDb();
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(localSchema.questions)
+      .where(
+        and(
+          eq(localSchema.questions.subjectCode, subjectCode),
+          eq(localSchema.questions.isActive, true)
+        )
+      );
+
+    return result[0]?.count || 0;
+  }
+
+  /**
+   * Update total questions count for a subject
+   */
+  async updateSubjectQuestionCount(subjectCode: string): Promise<void> {
+    const db = this.getDb();
+
+    const count = await this.countQuestionsBySubjectCode(subjectCode);
+
+    await db
+      .update(localSchema.subjects)
+      .set({
+        totalQuestions: count,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(localSchema.subjects.subjectCode, subjectCode));
+  }
+
+  /**
+   * Delete quiz attempts for a specific user and subject
+   * This allows users to retake tests after admin intervention
+   */
+  async deleteQuizAttempts(
+    studentCode: string,
+    subjectCode: string
+  ): Promise<{ success: boolean; error?: string; deletedCount?: number }> {
+    try {
+      const db = this.getDb();
+
+      const user = await db
+        .select({ id: localSchema.users.id })
+        .from(localSchema.users)
+        .where(eq(localSchema.users.studentCode, studentCode))
+        .limit(1);
+
+      if (user.length === 0) {
+        return { success: false, error: "User not found" };
+      }
+
+      const subject = await db
+        .select({ id: localSchema.subjects.id })
+        .from(localSchema.subjects)
+        .where(eq(localSchema.subjects.subjectCode, subjectCode))
+        .limit(1);
+
+      if (subject.length === 0) {
+        return { success: false, error: "Subject not found" };
+      }
+
+      const userId = user[0].id;
+      const subjectId = subject[0].id;
+
+      const deleteResult = await db
+        .delete(localSchema.quizAttempts)
+        .where(
+          and(
+            eq(localSchema.quizAttempts.userId, userId),
+            eq(localSchema.quizAttempts.subjectId, subjectId)
+          )
+        )
+        .returning({ id: localSchema.quizAttempts.id });
+
+      return {
+        success: true,
+        deletedCount: deleteResult.length,
+        error:
+          deleteResult.length === 0
+            ? "No quiz attempts found to delete"
+            : undefined,
+      };
+    } catch (error) {
+      console.error("Delete quiz attempts error:", error);
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to delete quiz attempts",
+      };
+    }
   }
 
   async checkIntegrity(): Promise<boolean> {

@@ -5,7 +5,9 @@ import type {
   NewQuestion,
   SessionData,
   SyncOperationType,
-} from "../src/types";
+  AdminSessionData,
+  CreateAdminData,
+} from "../src/types/app";
 
 const electronAPI = {
   // Database operations (raw SQL)
@@ -38,6 +40,8 @@ const electronAPI = {
     bulkCreateQuestions: (
       questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
     ) => ipcRenderer.invoke("quiz:bulk-create-questions", questions),
+    deleteQuizAttempts: (studentCode: string, subjectCode: string) =>
+      ipcRenderer.invoke("quiz:delete-quiz-attempts", studentCode, subjectCode),
   },
 
   // User operations (secure)
@@ -79,7 +83,10 @@ const electronAPI = {
       recordId: string;
       data: T;
     }) => ipcRenderer.invoke("sync:queue-operation", operation),
-    syncQuestions: () => ipcRenderer.invoke("sync:sync-questions"),
+    syncQuestions: (options?: {
+      replaceExisting?: boolean;
+      subjectCodes?: string[];
+    }) => ipcRenderer.invoke("sync:sync-questions", options),
   },
 
   // Seed operations (secure)
@@ -113,14 +120,14 @@ const electronAPI = {
       ipcRenderer.invoke("admin:validate-session", token),
     logout: () => ipcRenderer.invoke("admin:logout"),
     getCurrentSession: () => ipcRenderer.invoke("admin:get-current-session"),
-    storeSession: (sessionData: any) =>
+    storeSession: (sessionData: AdminSessionData) =>
       ipcRenderer.invoke("admin:store-session", sessionData),
     getDashboardStats: () => ipcRenderer.invoke("admin:get-dashboard-stats"),
     getAllUsers: () => ipcRenderer.invoke("admin:get-all-users"),
     getAllSubjects: () => ipcRenderer.invoke("admin:get-all-subjects"),
     getAllQuestions: () => ipcRenderer.invoke("admin:get-all-questions"),
     getAnalyticsData: () => ipcRenderer.invoke("admin:get-analytics-data"),
-    createAdmin: (adminData: any) =>
+    createAdmin: (adminData: CreateAdminData) =>
       ipcRenderer.invoke("admin:create-admin", adminData),
     deleteQuizAttempts: (studentCode: string, subjectCode: string) =>
       ipcRenderer.invoke(
@@ -128,6 +135,13 @@ const electronAPI = {
         studentCode,
         subjectCode
       ),
+  },
+
+  // Remote operations (secure)
+  remote: {
+    bulkCreateQuestions: (
+      questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
+    ) => ipcRenderer.invoke("remote:bulk-create-questions", questions),
   },
 };
 

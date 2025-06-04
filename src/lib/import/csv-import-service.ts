@@ -1,18 +1,30 @@
-import { LocalDatabaseService } from "../database/local-database-service";
+import { LocalDatabaseService } from "../database/local-database-service.js";
 import { v4 as uuidv4 } from "uuid";
-import type { NewSubject, NewQuestion } from "../database/local-schema";
-import type { CSVRow, ImportResult } from "@/types";
-import { isElectron } from "@/lib/utils";
-import { generateSubjectName } from "../constants/students";
-import { IPCDatabaseService } from "../services/ipc-database-service";
+import type { NewSubject, NewQuestion } from "../database/local-schema.js";
+import type { CSVRow, ImportResult } from "@/types/app";
+import { generateSubjectName } from "../constants/students.js";
+import { IPCDatabaseService } from "../services/ipc-database-service.js";
+import { RemoteDatabaseService } from "../database/remote-database-service.js";
+
+interface DatabaseServiceOptions {
+  isRemote?: boolean;
+}
 
 export class CSVImportService {
   private localDb: LocalDatabaseService;
+  private remoteDb: RemoteDatabaseService;
   private ipcDb: IPCDatabaseService;
+  private isRemote: boolean;
 
-  constructor() {
+  constructor(options: DatabaseServiceOptions = {}) {
     this.localDb = LocalDatabaseService.getInstance();
     this.ipcDb = new IPCDatabaseService();
+    this.remoteDb = RemoteDatabaseService.getInstance();
+    this.isRemote = options.isRemote || false;
+  }
+
+  private isElectron(): boolean {
+    return typeof window !== "undefined" && !!window.electronAPI;
   }
 
   /**
@@ -32,7 +44,6 @@ export class CSVImportService {
     };
 
     try {
-      // Extract subject code from filename (remove .csv extension)
       const subjectCode = filename
         ? filename.replace(/\.csv$/i, "").toUpperCase()
         : "UNKNOWN";
@@ -43,10 +54,8 @@ export class CSVImportService {
         throw new Error("No valid data found in CSV file");
       }
 
-      // Ensure subject exists (create if necessary)
       const subjectId = await this.ensureSubjectExists(subjectCode, results);
 
-      // Process all questions for this subject in bulk
       await this.processQuestionsInBulk(subjectId, subjectCode, rows, results);
 
       console.log("CSV Import completed:", results);
@@ -71,7 +80,6 @@ export class CSVImportService {
       throw new Error("CSV file must have headers and at least one data row");
     }
 
-    // Parse headers
     const headers = this.parseCSVLine(lines[0]);
     const requiredHeaders = [
       "Question Text",
@@ -82,14 +90,12 @@ export class CSVImportService {
       "Correct Answer",
     ];
 
-    // Validate headers
     for (const required of requiredHeaders) {
       if (!headers.includes(required)) {
         throw new Error(`Missing required header: ${required}`);
       }
     }
 
-    // Parse data rows
     const rows: CSVRow[] = [];
     for (let i = 1; i < lines.length; i++) {
       try {
@@ -100,9 +106,8 @@ export class CSVImportService {
           continue;
         }
 
-        // Parse each line and build the row object
         const row: CSVRow = {
-          "Subject Code": "", // Not needed since we use filename
+          "Subject Code": "",
           "Question Text": values[headers.indexOf("Question Text")] || "",
           "Option A": values[headers.indexOf("Option A")] || "",
           "Option B": values[headers.indexOf("Option B")] || "",
@@ -172,16 +177,34 @@ export class CSVImportService {
     subjectCode: string,
     results: ImportResult
   ): Promise<string> {
-    let subject = await this.localDb.findSubjectByCode(subjectCode);
+    let subject;
+
+    try {
+      if (this.isRemote) {
+        console.log(
+          `CSVImportService: Using remote database for subject lookup`
+        );
+        subject = await this.remoteDb.findSubjectByCode(subjectCode);
+      } else {
+        console.log(
+          `CSVImportService: Using local database for subject lookup`
+        );
+        subject = await this.localDb.findSubjectByCode(subjectCode);
+      }
+    } catch (error) {
+      console.error(
+        `CSVImportService: Error finding subject ${subjectCode}:`,
+        error
+      );
+      throw error;
+    }
 
     if (!subject) {
-      // Extract class from subject code (e.g., "SS2_MATH" -> "SS2")
       const classMatch = subjectCode.match(/^(SS2|JSS3|BASIC5)_/);
       const classLevel = classMatch
         ? (classMatch[1] as "SS2" | "JSS3" | "BASIC5")
         : "SS2";
 
-      // Generate subject name from code using the comprehensive mapping
       const subjectName = generateSubjectName(subjectCode);
 
       const subjectData: Omit<NewSubject, "createdAt" | "updatedAt"> = {
@@ -190,14 +213,34 @@ export class CSVImportService {
         subjectCode,
         description: `${subjectName} for ${classLevel} students`,
         class: classLevel,
-        totalQuestions: 0,
       };
 
-      await this.localDb.createSubject(subjectData);
-      subject = await this.localDb.findSubjectByCode(subjectCode);
-      results.subjects.created++;
+      try {
+        if (this.isRemote) {
+          console.log(
+            `CSVImportService: Creating subject ${subjectCode} in remote database`
+          );
+          await this.remoteDb.createSubject(subjectData);
+          subject = await this.remoteDb.findSubjectByCode(subjectCode);
+        } else {
+          console.log(
+            `CSVImportService: Creating subject ${subjectCode} in local database`
+          );
+          await this.localDb.createSubject(subjectData);
+          subject = await this.localDb.findSubjectByCode(subjectCode);
+        }
 
-      console.log(`Created new subject: ${subjectCode} - ${subjectName}`);
+        results.subjects.created++;
+        console.log(
+          `CSVImportService: Created new subject: ${subjectCode} - ${subjectName}`
+        );
+      } catch (error) {
+        console.error(
+          `CSVImportService: Error creating subject ${subjectCode}:`,
+          error
+        );
+        throw error;
+      }
     } else {
       results.subjects.existing++;
     }
@@ -305,7 +348,6 @@ export class CSVImportService {
       }
     }
 
-    // Bulk create all questions at once
     if (questionsToCreate.length > 0) {
       await this.bulkCreateQuestions(questionsToCreate);
       console.log(
@@ -320,7 +362,22 @@ export class CSVImportService {
   private async bulkCreateQuestions(
     questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
   ): Promise<void> {
-    await this.ipcDb.bulkCreateQuestions(questions);
+    try {
+      if (this.isRemote) {
+        await this.remoteDb.bulkCreateQuestions(questions);
+        console.log(
+          `CSVImportService: Successfully bulk created ${questions.length} questions in remote database`
+        );
+      } else {
+        await this.ipcDb.bulkCreateQuestions(questions);
+        console.log(
+          `CSVImportService: Successfully bulk created ${questions.length} questions via IPC`
+        );
+      }
+    } catch (error) {
+      console.error(`CSVImportService: Error in bulk create questions:`, error);
+      throw error;
+    }
   }
 
   /**
@@ -362,9 +419,9 @@ export class CSVImportService {
    */
   async importFromFile(filePath: string): Promise<ImportResult> {
     try {
-      if (isElectron()) {
+      if (this.isElectron()) {
         const csvContent = await window.electronAPI.csv.readFile(filePath);
-        const filename = filePath.split(/[\\/]/).pop(); // Extract filename from path
+        const filename = filePath.split(/[\\/]/).pop();
         return this.importQuestionsFromCSV(csvContent, filename);
       } else {
         throw new Error("File import only available in Electron environment");

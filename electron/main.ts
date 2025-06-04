@@ -1,20 +1,28 @@
-import { app, BrowserWindow, ipcMain, session, protocol } from "electron";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  session,
+  protocol,
+  dialog,
+} from "electron";
+import { join } from "path";
 import Store from "electron-store";
-import { readFileSync, existsSync } from "fs";
+import { existsSync } from "fs";
+
+import { config } from "dotenv";
+config();
+
 import { MainDatabaseService } from "./services/database-service.js";
 import type {
   NewQuizAttempt,
   NewUser,
   SessionData,
   SyncOperationType,
-} from "../src/types/index.js";
-import { SyncTrigger } from "@/lib/sync/sync-engine";
-import { AutoSeedingService } from "@/lib/seeding/auto-seeding-service";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+  NewQuestion,
+} from "../src/types/app.js";
+import { SyncTrigger } from "../src/lib/sync/sync-engine.js";
+import { AutoSeedingService } from "../src/lib/seeding/auto-seeding-service.js";
 
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
 
@@ -25,21 +33,33 @@ console.log({
   __dirname,
 });
 
-interface StoreSchema {
-  currentSession: SessionData | null;
-  settings: {
-    autoBackup: boolean;
-  };
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  console.log("Another instance is already running. Exiting...");
+  app.quit();
+} else {
+  console.log("Single instance lock acquired successfully");
 }
+
+// interface AppStoreSchema {
+//   currentSession: SessionData | null;
+//   settings: {
+//     autoBackup: boolean;
+//   };
+//   [key: string]: unknown;
+// }
 
 class QuizApp {
   private mainWindow: BrowserWindow | null = null;
   private dbService: MainDatabaseService;
-  private store: Store<StoreSchema>;
+  private store: any;
+  // private store: Store<AppStoreSchema>;
+  private isQuitting = false;
 
   constructor() {
     this.dbService = new MainDatabaseService();
-    this.store = new Store<StoreSchema>({
+    this.store = new Store({
       name: "quiz-app-session",
       defaults: {
         currentSession: null,
@@ -48,7 +68,25 @@ class QuizApp {
         },
       },
     });
+
+    // Handle second instance
+    app.on("second-instance", () => {
+      console.log("Second instance detected, focusing existing window...");
+      this.focusMainWindow();
+    });
+
     this.init();
+  }
+
+  private focusMainWindow(): void {
+    // Someone tried to run a second instance, focus our window instead
+    if (this.mainWindow) {
+      if (this.mainWindow.isMinimized()) {
+        this.mainWindow.restore();
+      }
+      this.mainWindow.focus();
+      this.mainWindow.show();
+    }
   }
 
   private async init(): Promise<void> {
@@ -83,18 +121,16 @@ class QuizApp {
 
   private registerAppProtocol(): void {
     protocol.handle("app", (request) => {
-      const url = request.url.replace("app://", "");
+      const url = new URL(request.url);
+      const pathname = url.pathname;
       const staticPath = join(__dirname, "../out");
 
       // Handle root path
-      let filePath = url === "" || url === "/" ? "index.html" : url;
-
-      // Remove query parameters and hash
-      filePath = filePath.split("?")[0].split("#")[0];
+      let filePath = pathname === "/" ? "index.html" : pathname.slice(1);
 
       // Security: prevent directory traversal
       if (filePath.includes("..")) {
-        return new Response("Forbidden", { status: 403 });
+        return new Response("Not Found", { status: 404 });
       }
 
       const fullPath = join(staticPath, filePath);
@@ -105,38 +141,48 @@ class QuizApp {
           // For SPA routing, fallback to index.html
           const indexPath = join(staticPath, "index.html");
           if (existsSync(indexPath)) {
-            const indexContent = readFileSync(indexPath);
-            return new Response(indexContent, {
-              headers: { "Content-Type": "text/html" },
+            return new Response(require("fs").readFileSync(indexPath), {
+              headers: { "content-type": "text/html" },
             });
           } else {
-            return new Response("File not found", { status: 404 });
+            return new Response("Not Found", { status: 404 });
           }
         }
 
-        const content = readFileSync(fullPath);
-        const ext = filePath.split(".").pop();
+        // Determine content type based on file extension
+        const ext = filePath.split(".").pop()?.toLowerCase();
+        let contentType = "text/plain";
 
-        const contentTypes: Record<string, string> = {
-          html: "text/html",
-          js: "application/javascript",
-          css: "text/css",
-          json: "application/json",
-          png: "image/png",
-          jpg: "image/jpeg",
-          jpeg: "image/jpeg",
-          svg: "image/svg+xml",
-          ico: "image/x-icon",
-          woff: "font/woff",
-          woff2: "font/woff2",
-          ttf: "font/ttf",
-          txt: "text/plain",
-        };
+        switch (ext) {
+          case "html":
+            contentType = "text/html";
+            break;
+          case "css":
+            contentType = "text/css";
+            break;
+          case "js":
+            contentType = "application/javascript";
+            break;
+          case "json":
+            contentType = "application/json";
+            break;
+          case "png":
+            contentType = "image/png";
+            break;
+          case "jpg":
+          case "jpeg":
+            contentType = "image/jpeg";
+            break;
+          case "svg":
+            contentType = "image/svg+xml";
+            break;
+          case "ico":
+            contentType = "image/x-icon";
+            break;
+        }
 
-        const contentType = contentTypes[ext!] || "application/octet-stream";
-
-        return new Response(content, {
-          headers: { "Content-Type": contentType },
+        return new Response(require("fs").readFileSync(fullPath), {
+          headers: { "content-type": contentType },
         });
       } catch (error) {
         console.error("Error serving file:", error);
@@ -162,6 +208,8 @@ class QuizApp {
         url: cookieUrl,
         name: "admin_session",
       });
+
+      console.log({ session: sessionCookie, mainSession });
 
       if (sessionCookie.length === 0) {
         return { valid: false };
@@ -195,6 +243,7 @@ class QuizApp {
       show: false,
       autoHideMenuBar: true,
       webPreferences: {
+        zoomFactor: 1.0,
         nodeIntegration: false,
         contextIsolation: true,
         preload: join(__dirname, "preload.js"),
@@ -220,6 +269,14 @@ class QuizApp {
       console.log("Electron window shown");
     });
 
+    // Handle window close with confirmation dialog
+    this.mainWindow.on("close", async (event) => {
+      if (!this.isQuitting) {
+        event.preventDefault();
+        await this.handleWindowClose();
+      }
+    });
+
     // Handle window closed
     this.mainWindow.on("closed", () => {
       this.mainWindow = null;
@@ -235,6 +292,48 @@ class QuizApp {
         });
       }
     );
+  }
+
+  private async handleWindowClose(): Promise<void> {
+    if (!this.mainWindow) return;
+
+    try {
+      const response = await dialog.showMessageBox(this.mainWindow, {
+        type: "question",
+        buttons: ["Quit", "Cancel"],
+        defaultId: 1, // Default to Cancel
+        cancelId: 1, // Cancel button index
+        title: "Confirm Quit",
+        message: "Are you sure you want to quit?",
+        detail:
+          "Any unsaved progress will be lost. The app will also perform a final sync before closing.",
+        noLink: true,
+      });
+
+      if (response.response === 0) {
+        console.log("User confirmed quit, starting cleanup...");
+        this.isQuitting = true;
+
+        try {
+          // Perform cleanup and final sync
+          await this.cleanup();
+          console.log("Cleanup completed, quitting app...");
+          app.quit();
+        } catch (error) {
+          console.error("Cleanup failed during quit:", error);
+          // Still quit even if cleanup fails
+          app.quit();
+        }
+      } else {
+        console.log("User cancelled quit operation");
+        // User clicked "Cancel" or closed dialog, do nothing
+      }
+    } catch (error) {
+      console.error("Error showing quit confirmation dialog:", error);
+      // If dialog fails, allow normal quit
+      this.isQuitting = true;
+      app.quit();
+    }
   }
 
   private setupIPC(): void {
@@ -371,11 +470,57 @@ class QuizApp {
 
     ipcMain.handle(
       "quiz:bulk-create-questions",
-      async (_, questions: any[]) => {
+      async (_, questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]) => {
         try {
           return await this.dbService.bulkCreateQuestions(questions);
         } catch (error) {
           console.error("Bulk create questions error:", error);
+          return {
+            success: false,
+            created: 0,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
+      }
+    );
+
+    ipcMain.handle(
+      "quiz:delete-quiz-attempts",
+      async (_, studentCode: string, subjectCode: string) => {
+        try {
+          return await this.dbService.deleteLocalQuizAttempts(
+            studentCode,
+            subjectCode
+          );
+        } catch (error) {
+          console.error("Delete local quiz attempts error:", error);
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
+      }
+    );
+
+    // Remote operations
+    ipcMain.handle(
+      "remote:bulk-create-questions",
+      async (_, questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]) => {
+        try {
+          const authCheck = await this.validateAdminAuth();
+          if (!authCheck.valid) {
+            throw new Error("Unauthorized: Admin authentication required");
+          }
+
+          return await this.dbService.remoteBulkCreateQuestions(questions);
+        } catch (error) {
+          console.error("Remote bulk create questions error:", error);
+          if (
+            error instanceof Error &&
+            error.message.includes("Unauthorized")
+          ) {
+            throw error;
+          }
           return {
             success: false,
             created: 0,
@@ -505,17 +650,27 @@ class QuizApp {
       }
     );
 
-    ipcMain.handle("sync:sync-questions", async () => {
-      try {
-        return await this.dbService.syncQuestions();
-      } catch (error) {
-        console.error("Sync questions error:", error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown sync error",
-        };
+    ipcMain.handle(
+      "sync:sync-questions",
+      async (
+        _,
+        options?: {
+          replaceExisting?: boolean;
+          subjectCodes?: string[];
+        }
+      ) => {
+        try {
+          return await this.dbService.syncQuestions(options);
+        } catch (error) {
+          console.error("Sync questions error:", error);
+          return {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Unknown sync error",
+          };
+        }
       }
-    });
+    );
 
     // Seed operations
     ipcMain.handle("seed:auto-seeding", async () => {
@@ -953,20 +1108,35 @@ class QuizApp {
     // Handle app quit
     app.on("window-all-closed", () => {
       if (process.platform !== "darwin") {
+        // On non-macOS platforms, quit when all windows are closed
+        this.isQuitting = true;
         this.cleanup();
         app.quit();
       }
     });
 
-    // Handle before quit - properly cleanup database connections
+    // Handle before quit - only perform cleanup if not already quitting
     app.on("before-quit", async (event) => {
-      try {
+      if (!this.isQuitting) {
         event.preventDefault();
-        await this.cleanup();
-        app.quit();
-      } catch (error) {
-        console.error("Cleanup failed during quit:", error);
-        app.quit();
+
+        try {
+          console.log("App is quitting, performing final cleanup...");
+          await this.cleanup();
+          this.isQuitting = true;
+          app.quit();
+        } catch (error) {
+          console.error("Cleanup failed during quit:", error);
+          this.isQuitting = true;
+          app.quit();
+        }
+      }
+    });
+
+    // Handle app will quit
+    app.on("will-quit", (event) => {
+      if (!this.isQuitting) {
+        console.log("App will quit event triggered");
       }
     });
   }
@@ -984,4 +1154,7 @@ class QuizApp {
   }
 }
 
-new QuizApp();
+// Only create the app if we got the single instance lock
+if (gotTheLock) {
+  new QuizApp();
+}

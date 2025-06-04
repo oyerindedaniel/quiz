@@ -1,7 +1,6 @@
-import { LocalDatabaseService } from "@/lib/database/local-database-service";
-import { RemoteDatabaseService } from "@/lib/database/remote-database-service";
-import { SyncError } from "@/lib/error";
-import type { SyncConflict, QuizAttempt } from "@/types";
+import { LocalDatabaseService } from "../database/local-database-service.js";
+import { RemoteDatabaseService } from "../database/remote-database-service.js";
+import type { SyncConflict, QuizAttempt } from "../../types/app.js";
 
 export type ConflictResolutionRule =
   | "local_wins"

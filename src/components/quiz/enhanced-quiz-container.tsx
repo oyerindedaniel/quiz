@@ -10,7 +10,6 @@ import { ProgressBar } from "./progress-bar";
 import { QuizResults } from "./quiz-results";
 import { QuizTimer } from "./quiz-timer";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { AlertCircle, CheckCircle } from "lucide-react";
 import type {
   ProcessedQuizData,
@@ -18,7 +17,7 @@ import type {
   SubmissionResult,
   User,
   Subject,
-} from "@/types";
+} from "@/types/app";
 
 interface QuizState {
   isLoading: boolean;
@@ -70,7 +69,6 @@ export function EnhancedQuizContainer() {
         throw new Error("This application requires Electron environment");
       }
 
-      // Get current session
       const session = await authService.getCurrentSession();
 
       if (!session.isAuthenticated || !session.user || !session.subject) {

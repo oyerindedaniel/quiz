@@ -5,6 +5,9 @@
  * Seeds a single admin user for production use
  */
 
+import { config } from "dotenv";
+config();
+
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { remoteAdminsTable } from "../src/lib/database/remote-schema";
@@ -97,9 +100,6 @@ async function seedAdmin() {
   }
 }
 
-// Handle script execution
-if (require.main === module) {
-  seedAdmin().catch(console.error);
-}
+seedAdmin().catch(console.error);
 
 export { seedAdmin };

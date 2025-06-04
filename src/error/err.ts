@@ -1,5 +1,5 @@
-import { ErrorLogEntry } from "@/types";
-import { generateUUID, formatDate } from "../utils/index";
+import { ErrorLogEntry } from "../types/app.js";
+import { generateUUID, formatDate } from "../utils/lib.js";
 
 export class ErrorManager {
   private static errors: ErrorLogEntry[] = [];

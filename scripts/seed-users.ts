@@ -5,22 +5,31 @@
  * Run with: node scripts/seed.js or pnpm run seed
  */
 
+import { config } from "dotenv";
+config();
+
 import { UserSeedingService } from "../src/lib/auth/user-seeding-service";
-import { createSQLiteManager } from "../src/lib/database/sqlite";
+import { createNeonManager } from "../src/lib/database/neon";
 
 async function main() {
   console.log("🌱 Starting database seeding...\n");
 
-  const sqliteManager = createSQLiteManager();
+  const neonManager = createNeonManager();
 
   try {
     console.log("📁 Initializing database...");
 
-    await sqliteManager.initialize();
+    await neonManager.initialize();
     console.log("✅ Database initialized\n");
 
+    const { RemoteDatabaseService } = await import(
+      "../src/lib/database/remote-database-service"
+    );
+    const remoteDb = RemoteDatabaseService.getInstance();
+    await remoteDb.initialize(process.env.NEON_DATABASE_URL!);
+
     console.log("📚 Creating subjects...");
-    const userSeedingService = new UserSeedingService();
+    const userSeedingService = new UserSeedingService({ isRemote: true });
     const subjectResults = await userSeedingService.createSubjectsData();
 
     console.log("\n📊 Subject Seeding Results:");
@@ -80,7 +89,17 @@ async function main() {
     }
     process.exit(1);
   } finally {
-    sqliteManager.close();
+    try {
+      const { RemoteDatabaseService } = await import(
+        "../src/lib/database/remote-database-service"
+      );
+      const remoteDb = RemoteDatabaseService.getInstance();
+      await remoteDb.cleanup();
+    } catch (cleanupError) {
+      console.warn("Remote DB cleanup warning:", cleanupError);
+    }
+
+    neonManager.close();
     console.log("\n🔐 Database connection closed");
   }
 }

@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/lib";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { QuestionItem } from "@/types";
-import { parseTextWithUnderlines } from "@/lib/utils/text-parser";
+import type { QuestionItem } from "@/types/app";
+import { parseTextWithUnderlines } from "@/utils/text-parser";
 
 interface EnhancedQuestionDisplayProps {
   questionItems: QuestionItem[];

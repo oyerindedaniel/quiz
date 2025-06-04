@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/lib";
 import { Badge } from "@/components/ui/badge";
 
 interface ProgressBarProps {

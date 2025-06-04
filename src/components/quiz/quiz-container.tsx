@@ -13,7 +13,7 @@ import type {
   Question,
   User,
   Subject,
-} from "@/types";
+} from "@/types/app";
 
 interface QuizContainerProps {
   userId: string;

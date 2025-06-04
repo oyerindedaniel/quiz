@@ -38,6 +38,7 @@ export const questionsTable = sqliteTable("questions", {
   questionOrder: integer("question_order").notNull(),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+  explanation: text("explanation"),
   isActive: integer("is_active", { mode: "boolean" }).default(true),
 });
 

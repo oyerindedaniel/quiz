@@ -1,4 +1,4 @@
-import { normalizeError, SyncError } from "@/lib/error";
+import { normalizeError, SyncError } from "../../error/err.js";
 
 export type ConnectivityStatus = "online" | "offline" | "checking";
 

@@ -1,4 +1,4 @@
-import { isElectron } from "../utils";
+import { isElectron } from "../../utils/lib";
 import { IPCDatabaseService } from "../services/ipc-database-service";
 import type {
   AuthResult,
@@ -6,7 +6,7 @@ import type {
   Subject,
   AdminAuthResult,
   SessionData,
-} from "@/types";
+} from "@/types/app";
 import type { RemoteAdmin } from "@/lib/database/remote-schema";
 
 export class AuthenticationService {
@@ -205,7 +205,7 @@ export class AuthenticationService {
    * Check if we're in Electron environment
    */
   isElectronEnvironment(): boolean {
-    return this.ipcDb.isElectronEnvironment();
+    return typeof window !== "undefined" && !!window.electronAPI;
   }
 
   /**

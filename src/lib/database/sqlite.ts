@@ -1,8 +1,7 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { localSchema } from "./local-schema";
+import { localSchema } from "./local-schema.js";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { isElectron } from "@/lib/utils";
 
 export class SQLiteManager {
   private static instance: SQLiteManager | null = null;
@@ -329,9 +328,11 @@ export class SQLiteManager {
  */
 export function getSQLiteDbPath(): string {
   // In Electron, we'll get the path from the main process
-  if (isElectron()) {
-    // This will be set by the Electron main process
-    return "quiz_app.db"; // Default filename, actual path will be resolved by Electron
+  if (typeof window !== "undefined" && !!window.electronAPI) {
+    // In Electron environment, this should be handled by the main process
+    // The actual path will be resolved using app.getPath("userData")
+    // This is just a placeholder - the real path will be set by LocalDatabaseService
+    return "quiz_app.db";
   }
 
   // Fallback for development/testing

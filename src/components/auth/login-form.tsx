@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/lib";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TimeInput } from "@/components/ui/time-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AuthenticationService } from "@/lib/auth/authentication-service";
 import { toast } from "sonner";
-import type { AuthResult } from "@/types";
+import type { AuthResult } from "@/types/app";
 import { useRouter } from "next/navigation";
 
 interface LoginFormProps {

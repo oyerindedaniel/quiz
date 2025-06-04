@@ -6,7 +6,7 @@ import type {
   NewUser,
   NewQuizAttempt,
   NewQuestion,
-} from "../database/local-schema";
+} from "../database/local-schema.js";
 import type {
   ImportResult,
   AuthResult,
@@ -20,13 +20,12 @@ import type {
   SubjectWithStats,
   QuestionWithStats,
   AnalyticsData,
-} from "@/types";
-import type { RemoteAdmin } from "../database/remote-schema";
-import { isElectron } from "../utils";
+} from "@/types/app";
+import type { RemoteAdmin } from "../database/remote-schema.js";
 
 export class IPCDatabaseService {
   private checkElectronAPI(): void {
-    if (!isElectron()) {
+    if (typeof window === "undefined" || !window.electronAPI) {
       throw new Error(
         "Electron API not available. This service only works in Electron environment."
       );
@@ -138,11 +137,6 @@ export class IPCDatabaseService {
   async checkIntegrity(): Promise<boolean> {
     this.checkElectronAPI();
     return window.electronAPI.database.checkIntegrity();
-  }
-
-  // Utility method to check if we're in Electron environment
-  isElectronEnvironment(): boolean {
-    return isElectron();
   }
 
   // Student Authentication operations
@@ -287,7 +281,7 @@ export class IPCDatabaseService {
   }
 
   /**
-   * Delete quiz attempts for a user and subject
+   * Delete quiz attempts for a user and subject (Admin operation via remote)
    */
   async deleteQuizAttempts(
     studentCode: string,
@@ -301,14 +295,46 @@ export class IPCDatabaseService {
   }
 
   /**
+   * Delete quiz attempts for a user and subject (Local database operation)
+   */
+  async deleteLocalQuizAttempts(
+    studentCode: string,
+    subjectCode: string
+  ): Promise<{ success: boolean; error?: string; deletedCount?: number }> {
+    this.checkElectronAPI();
+    return window.electronAPI.quiz.deleteQuizAttempts(studentCode, subjectCode);
+  }
+
+  /**
    * Sync questions from remote DB to local DB
    */
-  async syncQuestions(): Promise<{
+  async syncQuestions(options?: {
+    replaceExisting?: boolean;
+    subjectCodes?: string[];
+  }): Promise<{
     success: boolean;
     questionsPulled?: number;
+    subjectsSynced?: number;
     error?: string;
+    details?: {
+      newSubjects: number;
+      updatedQuestions: number;
+      newQuestions: number;
+      skippedQuestions: number;
+      replacedSubjects: number;
+    };
   }> {
     this.checkElectronAPI();
-    return window.electronAPI.sync.syncQuestions();
+    return window.electronAPI.sync.syncQuestions(options);
+  }
+
+  /**
+   * Bulk create questions directly to remote database
+   */
+  async remoteBulkCreateQuestions(
+    questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
+  ): Promise<{ success: boolean; created: number; error?: string }> {
+    this.checkElectronAPI();
+    return window.electronAPI.remote.bulkCreateQuestions(questions);
   }
 }

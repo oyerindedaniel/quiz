@@ -1,7 +1,10 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { remoteSchema } from "./remote-schema";
+import { remoteSchema } from "./remote-schema.js";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+
+import { config } from "dotenv";
+config();
 
 export class NeonManager {
   private db: NodePgDatabase<typeof remoteSchema> | null = null;

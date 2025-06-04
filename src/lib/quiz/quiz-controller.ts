@@ -1,12 +1,12 @@
 import { IPCDatabaseService } from "../services/ipc-database-service";
-import { generateUUID } from "../utils";
+import { generateUUID } from "../../utils/lib";
 import type {
   Question,
   QuizAttempt,
   QuizSession,
   AnswerResult,
   SubmissionResult,
-} from "@/types";
+} from "@/types/app";
 import type { NewQuizAttempt } from "../database/local-schema";
 
 export class QuizController {
@@ -23,10 +23,6 @@ export class QuizController {
    */
   async startQuiz(userId: string, subjectId: string): Promise<QuizSession> {
     try {
-      if (!this.ipcDb.isElectronEnvironment()) {
-        throw new Error("This application requires Electron environment");
-      }
-
       const existingAttempt = await this.ipcDb.findIncompleteAttempt(
         userId,
         subjectId

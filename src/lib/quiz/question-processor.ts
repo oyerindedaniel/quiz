@@ -1,5 +1,5 @@
 import type { Question } from "../database/local-schema";
-import type { QuestionItem, ProcessedQuizData } from "@/types";
+import type { QuestionItem, ProcessedQuizData } from "@/types/app";
 
 export class QuestionProcessor {
   /**

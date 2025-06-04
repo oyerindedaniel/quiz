@@ -1,7 +1,6 @@
-import { CSVImportService } from "@/lib/import/csv-import-service";
-import { UserSeedingService } from "@/lib/auth/user-seeding-service";
-import { normalizeError } from "@/lib/error";
-import { seedAdmin } from "../../../scripts/seed-admin";
+import { CSVImportService } from "../import/csv-import-service.js";
+import { UserSeedingService } from "../auth/user-seeding-service.js";
+import { normalizeError } from "../../error/err.js";
 import * as fs from "fs/promises";
 import * as path from "path";
 
@@ -49,21 +48,6 @@ export class AutoSeedingService {
         console.warn(
           "MainDatabaseService: CSV question seeding failed:",
           normalizeError(csvError).message
-        );
-      }
-
-      // 4. Seed admin users
-      try {
-        const adminResults = await this.seedAdminUsers();
-        totalRecords += adminResults.created;
-
-        console.log(
-          `MainDatabaseService: Seeded ${adminResults.created} admin users`
-        );
-      } catch (adminError) {
-        console.warn(
-          "MainDatabaseService: Admin user seeding failed:",
-          normalizeError(adminError).message
         );
       }
 
@@ -145,42 +129,6 @@ export class AutoSeedingService {
     } catch (error) {
       console.error("MainDatabaseService: CSV question seeding failed:", error);
       throw error;
-    }
-  }
-
-  /**
-   * Seed admin users
-   */
-  private static async seedAdminUsers(): Promise<{
-    created: number;
-    skipped: number;
-    errors: string[];
-  }> {
-    try {
-      console.log("MainDatabaseService: Starting admin user seeding...");
-
-      if (!process.env.NEON_DATABASE_URL) {
-        console.log(
-          "MainDatabaseService: No remote database URL, skipping admin seeding"
-        );
-        return { created: 0, skipped: 1, errors: [] };
-      }
-
-      await seedAdmin();
-
-      console.log("MainDatabaseService: Admin user seeded successfully");
-      return { created: 1, skipped: 0, errors: [] };
-    } catch (error) {
-      console.error("MainDatabaseService: Admin user seeding failed:", error);
-      return {
-        created: 0,
-        skipped: 0,
-        errors: [
-          error instanceof Error
-            ? error.message
-            : "Unknown admin seeding error",
-        ],
-      };
     }
   }
 }

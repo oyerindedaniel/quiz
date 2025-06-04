@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/lib";
 import { Input } from "@/components/ui/input";
 
 interface TimeInputProps {

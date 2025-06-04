@@ -1,18 +1,18 @@
-import { LocalDatabaseService } from "@/lib/database/local-database-service";
-import { RemoteDatabaseService } from "@/lib/database/remote-database-service";
-import { SyncQueue } from "./sync-queue";
-import { ConflictResolver } from "./conflict-resolver";
-import { ConnectivityHandler } from "./connectivity-handler";
-import { normalizeError, SyncError } from "@/lib/error";
-import { AutoSeedingService } from "@/lib/seeding/auto-seeding-service";
+import { LocalDatabaseService } from "../database/local-database-service.js";
+import { RemoteDatabaseService } from "../database/remote-database-service.js";
+import { SyncQueue } from "./sync-queue.js";
+import { ConflictResolver } from "./conflict-resolver.js";
+import { ConnectivityHandler } from "./connectivity-handler.js";
+import { normalizeError, SyncError } from "../../error/err.js";
+import { AutoSeedingService } from "../seeding/auto-seeding-service.js";
 import type {
   SyncOperation,
   SyncStatus,
   SyncResult,
   QuizAttempt,
   NewQuestion,
-} from "@/types";
-import { isElectron } from "../utils";
+} from "../../types/app.js";
+import { isElectron } from "../../utils/lib.js";
 
 export type SyncTrigger =
   | "startup"

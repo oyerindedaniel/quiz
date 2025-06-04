@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { IPCDatabaseService } from "@/lib/services/ipc-database-service";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
-import type { ImportResult } from "@/types";
+import type { ImportResult } from "@/types/app";
 
 const dbService = new IPCDatabaseService();
 
