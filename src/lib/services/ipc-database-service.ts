@@ -5,8 +5,23 @@ import type {
   QuizAttempt,
   NewUser,
   NewQuizAttempt,
+  NewQuestion,
 } from "../database/local-schema";
-import type { ImportResult } from "@/types";
+import type {
+  ImportResult,
+  AuthResult,
+  SessionData,
+  AdminAuthResult,
+  AdminSessionData,
+  CreateAdminData,
+  AdminCreationResult,
+  AdminDashboardStats,
+  UserWithAttempts,
+  SubjectWithStats,
+  QuestionWithStats,
+  AnalyticsData,
+} from "@/types";
+import type { RemoteAdmin } from "../database/remote-schema";
 import { isElectron } from "../utils";
 
 export class IPCDatabaseService {
@@ -82,10 +97,36 @@ export class IPCDatabaseService {
     return window.electronAPI.quiz.submit(attemptId, score, sessionDuration);
   }
 
+  async updateElapsedTime(
+    attemptId: string,
+    elapsedTime: number
+  ): Promise<void> {
+    this.checkElectronAPI();
+    return window.electronAPI.quiz.updateElapsedTime(attemptId, elapsedTime);
+  }
+
+  // Bulk question operations
+  async bulkCreateQuestions(
+    questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
+  ): Promise<{ success: boolean; created: number; error?: string }> {
+    this.checkElectronAPI();
+    return window.electronAPI.quiz.bulkCreateQuestions(questions);
+  }
+
   // CSV Import operations
   async importCSVQuestions(csvContent: string): Promise<ImportResult> {
     this.checkElectronAPI();
     return window.electronAPI.csv.import(csvContent);
+  }
+
+  // Perform auto seeding
+  async performAutoSeeding(): Promise<{
+    success: boolean;
+    totalRecords: number;
+    error?: string;
+  }> {
+    this.checkElectronAPI();
+    return window.electronAPI.seed.performAutoSeeding();
   }
 
   async readCSVFile(filePath: string): Promise<string> {
@@ -101,6 +142,173 @@ export class IPCDatabaseService {
 
   // Utility method to check if we're in Electron environment
   isElectronEnvironment(): boolean {
-    return typeof window !== "undefined" && !!window.electronAPI;
+    return isElectron();
+  }
+
+  // Student Authentication operations
+  async authenticateStudent(
+    studentCode: string,
+    subjectCode: string,
+    pin: string
+  ): Promise<AuthResult> {
+    this.checkElectronAPI();
+    return window.electronAPI.auth.authenticate(studentCode, subjectCode, pin);
+  }
+
+  async validateStudentSession(token: string): Promise<{
+    valid: boolean;
+    userId?: string;
+    subjectId?: string;
+  }> {
+    this.checkElectronAPI();
+    return window.electronAPI.auth.validateSession(token);
+  }
+
+  async getStudentSession(): Promise<{
+    isAuthenticated: boolean;
+    user?: User;
+    subject?: Subject;
+    sessionToken?: string;
+  }> {
+    this.checkElectronAPI();
+    return window.electronAPI.auth.getCurrentSession();
+  }
+
+  async storeStudentSession(
+    sessionData: SessionData
+  ): Promise<{ success: boolean }> {
+    this.checkElectronAPI();
+    return window.electronAPI.auth.storeSession(sessionData);
+  }
+
+  async logoutStudent(): Promise<void> {
+    this.checkElectronAPI();
+    return window.electronAPI.auth.logout();
+  }
+
+  // Time Limit operations
+  async setQuizTimeLimit(
+    userId: string,
+    subjectId: string,
+    timeLimit: number
+  ): Promise<void> {
+    this.checkElectronAPI();
+    return window.electronAPI.auth.setTimeLimit(userId, subjectId, timeLimit);
+  }
+
+  async getQuizTimeLimit(
+    userId: string,
+    subjectId: string
+  ): Promise<number | null> {
+    this.checkElectronAPI();
+    return window.electronAPI.auth.getTimeLimit(userId, subjectId);
+  }
+
+  async clearQuizTimeLimit(userId: string, subjectId: string): Promise<void> {
+    this.checkElectronAPI();
+    return window.electronAPI.auth.clearTimeLimit(userId, subjectId);
+  }
+
+  // Admin Authentication operations
+  async authenticateAdmin(
+    username: string,
+    password: string
+  ): Promise<AdminAuthResult> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.authenticate(username, password);
+  }
+
+  async validateAdminSession(token: string): Promise<{
+    valid: boolean;
+    adminId?: string;
+  }> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.validateSession(token);
+  }
+
+  async getAdminSession(): Promise<{
+    isAuthenticated: boolean;
+    admin?: RemoteAdmin;
+    sessionToken?: string;
+  }> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.getCurrentSession();
+  }
+
+  /**
+   * Store admin session data
+   * Note: Admin sessions are managed via Electron session cookies
+   */
+  async storeAdminSession(
+    sessionData: AdminSessionData
+  ): Promise<{ success: boolean }> {
+    // Admin sessions are automatically stored as cookies in main.ts
+    // This method is kept for interface compatibility but doesn't need implementation
+    return { success: true };
+  }
+
+  async logoutAdmin(): Promise<void> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.logout();
+  }
+
+  // Admin Dashboard operations
+  async getDashboardStats(): Promise<AdminDashboardStats> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.getDashboardStats();
+  }
+
+  async getAllUsers(): Promise<UserWithAttempts[]> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.getAllUsers();
+  }
+
+  async getAllSubjects(): Promise<SubjectWithStats[]> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.getAllSubjects();
+  }
+
+  async getAllQuestions(): Promise<QuestionWithStats[]> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.getAllQuestions();
+  }
+
+  async getAnalyticsData(): Promise<AnalyticsData> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.getAnalyticsData();
+  }
+
+  /**
+   * Create a new admin user
+   */
+  async createAdmin(adminData: CreateAdminData): Promise<AdminCreationResult> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.createAdmin(adminData);
+  }
+
+  /**
+   * Delete quiz attempts for a user and subject
+   */
+  async deleteQuizAttempts(
+    studentCode: string,
+    subjectCode: string
+  ): Promise<{ success: boolean; error?: string; deletedCount?: number }> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.deleteQuizAttempts(
+      studentCode,
+      subjectCode
+    );
+  }
+
+  /**
+   * Sync questions from remote DB to local DB
+   */
+  async syncQuestions(): Promise<{
+    success: boolean;
+    questionsPulled?: number;
+    error?: string;
+  }> {
+    this.checkElectronAPI();
+    return window.electronAPI.sync.syncQuestions();
   }
 }

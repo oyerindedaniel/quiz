@@ -85,14 +85,15 @@ export function formatDuration(seconds: number): string {
 /**
  * Debounce function
  */
-export function debounce<T extends (...args: any[]) => void>(
+export function debounce<T extends (...args: unknown[]) => void>(
   func: T,
-  wait: number
+  delay: number
 ): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout;
+  let timeoutId: NodeJS.Timeout;
+
   return (...args: Parameters<T>) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => func(...args), delay);
   };
 }
 

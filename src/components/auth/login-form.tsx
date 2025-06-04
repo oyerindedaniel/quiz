@@ -4,9 +4,12 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TimeInput } from "@/components/ui/time-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AuthenticationService } from "@/lib/auth/authentication-service";
+import { toast } from "sonner";
 import type { AuthResult } from "@/types";
+import { useRouter } from "next/navigation";
 
 interface LoginFormProps {
   onSuccess: (authResult: AuthResult) => void;
@@ -18,9 +21,12 @@ export function LoginForm({ onSuccess, onError }: LoginFormProps) {
     studentCode: "",
     subjectCode: "",
     pin: "",
+    timeLimit: 0, // in seconds
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const router = useRouter();
 
   const authService = AuthenticationService.getInstance();
 
@@ -29,22 +35,14 @@ export function LoginForm({ onSuccess, onError }: LoginFormProps) {
 
     if (!formData.studentCode.trim()) {
       newErrors.studentCode = "Student code is required";
-    } else if (!/^[A-Z0-9]{6,12}$/i.test(formData.studentCode.trim())) {
-      newErrors.studentCode =
-        "Student code must be 6-12 alphanumeric characters";
     }
 
     if (!formData.subjectCode.trim()) {
       newErrors.subjectCode = "Subject code is required";
-    } else if (!/^[A-Z]{2,6}\d{2,4}$/i.test(formData.subjectCode.trim())) {
-      newErrors.subjectCode =
-        "Subject code format: letters + numbers (e.g., MATH101)";
     }
 
     if (!formData.pin.trim()) {
       newErrors.pin = "PIN is required";
-    } else if (!/^\d{6}$/.test(formData.pin.trim())) {
-      newErrors.pin = "PIN must be exactly 6 digits";
     }
 
     setErrors(newErrors);
@@ -55,6 +53,13 @@ export function LoginForm({ onSuccess, onError }: LoginFormProps) {
     e.preventDefault();
 
     if (!validateForm()) return;
+
+    if (!authService.isElectronEnvironment()) {
+      const errorMessage = "This application requires Electron to run";
+      setErrors({ general: errorMessage });
+      onError?.(errorMessage);
+      return;
+    }
 
     setLoading(true);
     setErrors({});
@@ -67,7 +72,32 @@ export function LoginForm({ onSuccess, onError }: LoginFormProps) {
       );
 
       if (result.success) {
+        if (formData.timeLimit > 0 && result.user && result.subject) {
+          try {
+            await authService.setQuizTimeLimit(
+              result.user.id,
+              result.subject.id,
+              formData.timeLimit
+            );
+            toast.success("Time limit set successfully", {
+              description: `Quiz time limit: ${Math.floor(
+                formData.timeLimit / 60
+              )} minutes`,
+            });
+          } catch (error) {
+            console.warn("Failed to store time limit:", error);
+            toast.warning("Time limit not saved", {
+              description: "Proceeding without time limit",
+            });
+          }
+        }
+
+        toast.success("Authentication successful!", {
+          description: `Welcome ${result.user?.name}`,
+        });
+
         onSuccess(result);
+        router.push("/quiz");
       } else {
         const errorMessage = result.error || "Authentication failed";
         setErrors({ general: errorMessage });
@@ -77,12 +107,16 @@ export function LoginForm({ onSuccess, onError }: LoginFormProps) {
       const errorMessage = "An unexpected error occurred. Please try again.";
       setErrors({ general: errorMessage });
       onError?.(errorMessage);
+      console.error("Login form error:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleInputChange = (field: keyof typeof formData, value: string) => {
+  const handleInputChange = (
+    field: keyof typeof formData,
+    value: string | number
+  ) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: "" }));
@@ -204,6 +238,19 @@ export function LoginForm({ onSuccess, onError }: LoginFormProps) {
               {errors.pin && (
                 <p className="text-sm text-incorrect-600 mt-1">{errors.pin}</p>
               )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Exam Time Limit
+              </label>
+              <TimeInput
+                value={formData.timeLimit}
+                onChange={(timeLimit) =>
+                  handleInputChange("timeLimit", timeLimit)
+                }
+                disabled={loading}
+              />
             </div>
           </div>
 

@@ -3,18 +3,25 @@ import { v4 as uuidv4 } from "uuid";
 import type { NewSubject, NewQuestion } from "../database/local-schema";
 import type { CSVRow, ImportResult } from "@/types";
 import { isElectron } from "@/lib/utils";
+import { generateSubjectName } from "../constants/students";
+import { IPCDatabaseService } from "../services/ipc-database-service";
 
 export class CSVImportService {
   private localDb: LocalDatabaseService;
+  private ipcDb: IPCDatabaseService;
 
   constructor() {
     this.localDb = LocalDatabaseService.getInstance();
+    this.ipcDb = new IPCDatabaseService();
   }
 
   /**
-   * Import questions from CSV file content
+   * Import questions from CSV file content with filename as subject code
    */
-  async importQuestionsFromCSV(csvContent: string): Promise<ImportResult> {
+  async importQuestionsFromCSV(
+    csvContent: string,
+    filename?: string
+  ): Promise<ImportResult> {
     const results: ImportResult = {
       processed: 0,
       successful: 0,
@@ -25,35 +32,22 @@ export class CSVImportService {
     };
 
     try {
-      // Parse CSV content
+      // Extract subject code from filename (remove .csv extension)
+      const subjectCode = filename
+        ? filename.replace(/\.csv$/i, "").toUpperCase()
+        : "UNKNOWN";
+
       const rows = this.parseCSV(csvContent);
 
       if (rows.length === 0) {
         throw new Error("No valid data found in CSV file");
       }
 
-      // Group rows by subject for batch processing
-      const subjectGroups = this.groupRowsBySubject(rows);
+      // Ensure subject exists (create if necessary)
+      const subjectId = await this.ensureSubjectExists(subjectCode, results);
 
-      for (const [subjectCode, subjectRows] of subjectGroups) {
-        try {
-          // Ensure subject exists
-          const subjectId = await this.ensureSubjectExists(
-            subjectCode,
-            results
-          );
-
-          // Process questions for this subject
-          await this.processSubjectQuestions(subjectId, subjectRows, results);
-        } catch (error) {
-          results.errors.push(
-            `Subject ${subjectCode}: ${
-              error instanceof Error ? error.message : "Unknown error"
-            }`
-          );
-          results.failed += subjectRows.length;
-        }
-      }
+      // Process all questions for this subject in bulk
+      await this.processQuestionsInBulk(subjectId, subjectCode, rows, results);
 
       console.log("CSV Import completed:", results);
       return results;
@@ -80,14 +74,12 @@ export class CSVImportService {
     // Parse headers
     const headers = this.parseCSVLine(lines[0]);
     const requiredHeaders = [
-      "Subject Code",
       "Question Text",
       "Option A",
       "Option B",
       "Option C",
       "Option D",
       "Correct Answer",
-      "Question Order",
     ];
 
     // Validate headers
@@ -108,12 +100,20 @@ export class CSVImportService {
           continue;
         }
 
-        const row: any = {};
-        headers.forEach((header, index) => {
-          row[header] = values[index]?.trim() || "";
-        });
+        // Parse each line and build the row object
+        const row: CSVRow = {
+          "Subject Code": "", // Not needed since we use filename
+          "Question Text": values[headers.indexOf("Question Text")] || "",
+          "Option A": values[headers.indexOf("Option A")] || "",
+          "Option B": values[headers.indexOf("Option B")] || "",
+          "Option C": values[headers.indexOf("Option C")] || "",
+          "Option D": values[headers.indexOf("Option D")] || "",
+          "Correct Answer": values[headers.indexOf("Correct Answer")] || "",
+          "Question Order":
+            values[headers.indexOf("Question Order")] || i.toString(),
+        };
 
-        rows.push(row as CSVRow);
+        rows.push(row);
       } catch (error) {
         console.warn(
           `Row ${i + 1}: Parse error - ${
@@ -166,25 +166,6 @@ export class CSVImportService {
   }
 
   /**
-   * Group CSV rows by subject code
-   */
-  private groupRowsBySubject(rows: CSVRow[]): Map<string, CSVRow[]> {
-    const groups = new Map<string, CSVRow[]>();
-
-    for (const row of rows) {
-      const subjectCode = row["Subject Code"];
-      if (!subjectCode) continue;
-
-      if (!groups.has(subjectCode)) {
-        groups.set(subjectCode, []);
-      }
-      groups.get(subjectCode)!.push(row);
-    }
-
-    return groups;
-  }
-
-  /**
    * Ensure subject exists, create if necessary
    */
   private async ensureSubjectExists(
@@ -195,11 +176,13 @@ export class CSVImportService {
 
     if (!subject) {
       // Extract class from subject code (e.g., "SS2_MATH" -> "SS2")
-      const classMatch = subjectCode.match(/^(SS2|JSS3)_/);
-      const classLevel = classMatch ? (classMatch[1] as "SS2" | "JSS3") : "SS2";
+      const classMatch = subjectCode.match(/^(SS2|JSS3|BASIC5)_/);
+      const classLevel = classMatch
+        ? (classMatch[1] as "SS2" | "JSS3" | "BASIC5")
+        : "SS2";
 
-      // Generate subject name from code
-      const subjectName = this.generateSubjectName(subjectCode);
+      // Generate subject name from code using the comprehensive mapping
+      const subjectName = generateSubjectName(subjectCode);
 
       const subjectData: Omit<NewSubject, "createdAt" | "updatedAt"> = {
         id: uuidv4(),
@@ -227,56 +210,89 @@ export class CSVImportService {
   }
 
   /**
-   * Generate readable subject name from subject code
+   * Process all questions in bulk for better performance
    */
-  private generateSubjectName(subjectCode: string): string {
-    const codeMap: Record<string, string> = {
-      ENG: "English Studies",
-      MATH: "Mathematics",
-      SST: "Social Studies",
-      SOCS: "Social Studies",
-      BSC: "Basic Science",
-      BSCI: "Basic Science",
-      YOR: "Yoruba Language",
-      GEO: "Geography",
-      AGRIC: "Agriculture",
-      ECON: "Economics",
-      CHEM: "Chemistry",
-      PHY: "Physics",
-      BIO: "Biology",
-      CIVIC: "Civic Education",
-      ANI: "Animal Husbandry",
-      COMP: "Computer Studies",
-      HOME: "Home Economics",
-      CCA: "Creative and Cultural Arts",
-      HIST: "History",
-    };
-
-    // Extract subject part (after class prefix)
-    const parts = subjectCode.split("_");
-    if (parts.length >= 2) {
-      const subjectPart = parts[1];
-      return codeMap[subjectPart] || subjectPart;
-    }
-
-    return subjectCode;
-  }
-
-  /**
-   * Process questions for a subject
-   */
-  private async processSubjectQuestions(
+  private async processQuestionsInBulk(
     subjectId: string,
+    subjectCode: string,
     rows: CSVRow[],
     results: ImportResult
   ): Promise<void> {
+    const questionsToCreate: Omit<NewQuestion, "createdAt" | "updatedAt">[] =
+      [];
     let questionOrder = 1;
 
     for (const row of rows) {
       results.processed++;
 
       try {
-        await this.processQuestionRow(row, subjectId, questionOrder, results);
+        const questionText = row["Question Text"]?.trim();
+
+        if (!questionText) {
+          results.failed++;
+          results.errors.push(
+            `Row ${results.processed}: Question Text is required`
+          );
+          continue;
+        }
+
+        // Detect question type
+        let questionType: "question" | "passage" | "header" = "question";
+        let processedText = this.processTextContent(questionText);
+
+        if (questionText.startsWith("[PASSAGE]")) {
+          questionType = "passage";
+          processedText = this.processTextContent(
+            questionText.replace(/^\[PASSAGE\]\s*/, "")
+          );
+          results.questions.passages++;
+        } else if (questionText.startsWith("[HEADER]")) {
+          questionType = "header";
+          processedText = this.processTextContent(
+            questionText.replace(/^\[HEADER\]\s*/, "")
+          );
+          results.questions.headers++;
+        } else {
+          results.questions.regular++;
+        }
+
+        // Create question data
+        if (questionType === "passage" || questionType === "header") {
+          questionsToCreate.push({
+            id: uuidv4(),
+            subjectId,
+            subjectCode,
+            text: `[${questionType.toUpperCase()}] ${processedText}`,
+            options: JSON.stringify([]), // Empty options for special questions
+            answer: "", // No correct answer for special questions
+            questionOrder: row["Question Order"]
+              ? parseInt(row["Question Order"])
+              : questionOrder,
+          });
+        } else {
+          // Regular question - validate first
+          this.validateRegularQuestion(row);
+
+          const options = [
+            this.processTextContent(row["Option A"]),
+            this.processTextContent(row["Option B"]),
+            this.processTextContent(row["Option C"]),
+            this.processTextContent(row["Option D"]),
+          ];
+
+          questionsToCreate.push({
+            id: uuidv4(),
+            subjectId,
+            subjectCode,
+            text: processedText,
+            options: JSON.stringify(options),
+            answer: row["Correct Answer"].toUpperCase().trim(),
+            questionOrder: row["Question Order"]
+              ? parseInt(row["Question Order"])
+              : questionOrder,
+          });
+        }
+
         results.successful++;
         questionOrder++;
       } catch (error) {
@@ -288,52 +304,33 @@ export class CSVImportService {
         );
       }
     }
+
+    // Bulk create all questions at once
+    if (questionsToCreate.length > 0) {
+      await this.bulkCreateQuestions(questionsToCreate);
+      console.log(
+        `Bulk created ${questionsToCreate.length} questions for subject ${subjectCode}`
+      );
+    }
   }
 
   /**
-   * Process a single question row
+   * Bulk create questions for better performance
    */
-  private async processQuestionRow(
-    row: CSVRow,
-    subjectId: string,
-    questionOrder: number,
-    results: ImportResult
+  private async bulkCreateQuestions(
+    questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
   ): Promise<void> {
-    const questionText = row["Question Text"]?.trim();
+    await this.ipcDb.bulkCreateQuestions(questions);
+  }
 
-    if (!questionText) {
-      throw new Error("Question Text is required");
-    }
-
-    // Detect question type
-    let questionType: "question" | "passage" | "header" = "question";
-    let processedText = questionText;
-
-    if (questionText.startsWith("[PASSAGE]")) {
-      questionType = "passage";
-      processedText = questionText.replace(/^\[PASSAGE\]\s*/, "");
-      results.questions.passages++;
-    } else if (questionText.startsWith("[HEADER]")) {
-      questionType = "header";
-      processedText = questionText.replace(/^\[HEADER\]\s*/, "");
-      results.questions.headers++;
-    } else {
-      results.questions.regular++;
-    }
-
-    // For passages and headers, options and answers should be empty
-    if (questionType === "passage" || questionType === "header") {
-      await this.createSpecialQuestion(
-        subjectId,
-        questionType,
-        processedText,
-        questionOrder
-      );
-    } else {
-      // Regular question - validate and create
-      this.validateRegularQuestion(row);
-      await this.createRegularQuestion(row, subjectId, questionOrder);
-    }
+  /**
+   * Process text content to preserve underline markers
+   * Converts **text** markers to a format that can be rendered in UI
+   */
+  private processTextContent(text: string): string {
+    // Preserve the **text** markers as-is for UI processing
+    // The UI component will handle the actual rendering
+    return text.trim();
   }
 
   /**
@@ -361,63 +358,14 @@ export class CSVImportService {
   }
 
   /**
-   * Create a regular question
-   */
-  private async createRegularQuestion(
-    row: CSVRow,
-    subjectId: string,
-    questionOrder: number
-  ): Promise<void> {
-    const options = [
-      row["Option A"].trim(),
-      row["Option B"].trim(),
-      row["Option C"].trim(),
-      row["Option D"].trim(),
-    ];
-
-    const questionData: Omit<NewQuestion, "createdAt" | "updatedAt"> = {
-      id: uuidv4(),
-      subjectId,
-      text: row["Question Text"].trim(),
-      options: JSON.stringify(options),
-      answer: row["Correct Answer"].toUpperCase().trim(),
-      questionOrder: row["Question Order"]
-        ? parseInt(row["Question Order"])
-        : questionOrder,
-    };
-
-    await this.localDb.createQuestion(questionData);
-  }
-
-  /**
-   * Create a special question (passage or header)
-   */
-  private async createSpecialQuestion(
-    subjectId: string,
-    type: "passage" | "header",
-    content: string,
-    questionOrder: number
-  ): Promise<void> {
-    const questionData: Omit<NewQuestion, "createdAt" | "updatedAt"> = {
-      id: uuidv4(),
-      subjectId,
-      text: `[${type.toUpperCase()}] ${content}`,
-      options: JSON.stringify([]), // Empty options for special questions
-      answer: "", // No correct answer for special questions
-      questionOrder,
-    };
-
-    await this.localDb.createQuestion(questionData);
-  }
-
-  /**
    * Load and import CSV file from file system
    */
   async importFromFile(filePath: string): Promise<ImportResult> {
     try {
       if (isElectron()) {
         const csvContent = await window.electronAPI.csv.readFile(filePath);
-        return this.importQuestionsFromCSV(csvContent);
+        const filename = filePath.split(/[\\/]/).pop(); // Extract filename from path
+        return this.importQuestionsFromCSV(csvContent, filename);
       } else {
         throw new Error("File import only available in Electron environment");
       }

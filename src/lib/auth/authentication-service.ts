@@ -1,24 +1,20 @@
-import bcrypt from "bcryptjs";
-import { LocalDatabaseService } from "../database/local-database-service";
-import {
-  generateUUID,
-  validateStudentCode,
-  validateSubjectCode,
-} from "../utils";
+import { isElectron } from "../utils";
+import { IPCDatabaseService } from "../services/ipc-database-service";
 import type {
+  AuthResult,
   User,
   Subject,
-  AuthResult,
-  CreateUserData,
-  DatabaseUserData,
+  AdminAuthResult,
+  SessionData,
 } from "@/types";
+import type { RemoteAdmin } from "@/lib/database/remote-schema";
 
 export class AuthenticationService {
   private static instance: AuthenticationService;
-  private localDb: LocalDatabaseService;
+  private ipcDb: IPCDatabaseService;
 
   private constructor() {
-    this.localDb = LocalDatabaseService.getInstance();
+    this.ipcDb = new IPCDatabaseService();
   }
 
   public static getInstance(): AuthenticationService {
@@ -28,8 +24,17 @@ export class AuthenticationService {
     return AuthenticationService.instance;
   }
 
+  private checkElectronAPI(): void {
+    if (!isElectron()) {
+      throw new Error(
+        "Electron API not available. This service only works in Electron environment."
+      );
+    }
+  }
+
   /**
    * Authenticate student with student code, subject code, and PIN
+   *
    */
   async authenticateStudent(
     studentCode: string,
@@ -37,67 +42,29 @@ export class AuthenticationService {
     pin: string
   ): Promise<AuthResult> {
     try {
-      if (!validateStudentCode(studentCode)) {
-        return {
-          success: false,
-          error:
-            "Invalid student code format. Must be 6-12 alphanumeric characters.",
-        };
-      }
+      this.checkElectronAPI();
 
-      if (!validateSubjectCode(subjectCode)) {
-        return {
-          success: false,
-          error:
-            "Invalid subject code format. Must be letters followed by numbers (e.g., MATH101).",
-        };
-      }
-
-      if (!this.validatePin(pin)) {
-        return {
-          success: false,
-          error: "PIN must be exactly 6 digits.",
-        };
-      }
-
-      const user = await this.localDb.findUserByStudentCode(studentCode);
-      if (!user) {
-        return {
-          success: false,
-          error: "Student not found. Please check your student code.",
-        };
-      }
-
-      const isValidPin = await this.verifyPin(pin, user.passwordHash);
-      if (!isValidPin) {
-        return {
-          success: false,
-          error: "Invalid PIN. Please try again.",
-        };
-      }
-
-      const subject = await this.localDb.findSubjectByCode(subjectCode);
-      if (!subject) {
-        return {
-          success: false,
-          error: "Subject not found. Please check your subject code.",
-        };
-      }
-
-      const existingAttempt = await this.localDb.findIncompleteAttempt(
-        user.id,
-        subject.id
+      const result = await this.ipcDb.authenticateStudent(
+        studentCode.trim().toUpperCase(),
+        subjectCode.trim().toUpperCase(),
+        pin.trim()
       );
 
-      const sessionToken = this.generateSessionToken(user.id, subject.id);
+      if (
+        result.success &&
+        result.sessionToken &&
+        result.user &&
+        result.subject
+      ) {
+        await this.ipcDb.storeStudentSession({
+          user: result.user,
+          subject: result.subject,
+          sessionToken: result.sessionToken,
+          authenticatedAt: new Date().toISOString(),
+        });
+      }
 
-      return {
-        success: true,
-        user,
-        subject,
-        existingAttempt,
-        sessionToken,
-      };
+      return result;
     } catch (error) {
       console.error("Authentication error:", error);
       return {
@@ -108,101 +75,182 @@ export class AuthenticationService {
   }
 
   /**
-   * Create new user (for seeding/admin purposes)
+   * Validate session token via IPC
    */
-  async createUser(userData: CreateUserData): Promise<string> {
+  async validateSessionToken(token: string): Promise<{
+    valid: boolean;
+    userId?: string;
+    subjectId?: string;
+  }> {
     try {
-      const existingUser = await this.localDb.findUserByStudentCode(
-        userData.studentCode
+      this.checkElectronAPI();
+      return await this.ipcDb.validateStudentSession(token);
+    } catch (error) {
+      console.error("Session validation error:", error);
+      return { valid: false };
+    }
+  }
+
+  /**
+   * Get current session from electron-store
+   */
+  async getCurrentSession(): Promise<{
+    isAuthenticated: boolean;
+    user?: User;
+    subject?: Subject;
+    sessionToken?: string;
+  }> {
+    try {
+      this.checkElectronAPI();
+      return await this.ipcDb.getStudentSession();
+    } catch (error) {
+      console.error("Get current session error:", error);
+      return { isAuthenticated: false };
+    }
+  }
+
+  /**
+   * Logout - clear session via IPC (secure)
+   */
+  async logout(): Promise<void> {
+    try {
+      this.checkElectronAPI();
+      await this.ipcDb.logoutStudent();
+      console.log("User logged out successfully");
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  }
+
+  /**
+   * Authenticate admin with username and password
+   */
+  async authenticateAdmin(
+    username: string,
+    password: string
+  ): Promise<AdminAuthResult> {
+    try {
+      this.checkElectronAPI();
+
+      const result = await this.ipcDb.authenticateAdmin(
+        username.trim(),
+        password.trim()
       );
 
-      if (existingUser) {
-        throw new Error("Student code already exists");
+      if (result.success && result.sessionToken && result.admin) {
+        await this.ipcDb.storeAdminSession({
+          admin: result.admin,
+          sessionToken: result.sessionToken,
+          authenticatedAt: new Date().toISOString(),
+        });
       }
 
-      const passwordHash = await this.hashPin(userData.pin);
-
-      const userId = generateUUID();
-      await this.localDb.createUser({
-        id: userId,
-        name: userData.name,
-        studentCode: userData.studentCode,
-        passwordHash,
-        class: userData.class,
-        gender: userData.gender,
-      } as DatabaseUserData);
-
-      return userId;
+      return result;
     } catch (error) {
-      console.error("Failed to create user:", error);
+      console.error("Admin authentication error:", error);
+      return {
+        success: false,
+        error: "Admin authentication failed. Please try again.",
+      };
+    }
+  }
+
+  /**
+   * Validate admin session token
+   */
+  async validateAdminSessionToken(token: string): Promise<{
+    valid: boolean;
+    adminId?: string;
+  }> {
+    try {
+      this.checkElectronAPI();
+      return await this.ipcDb.validateAdminSession(token);
+    } catch (error) {
+      console.error("Admin session validation error:", error);
+      return { valid: false };
+    }
+  }
+
+  /**
+   * Get current admin session
+   */
+  async getCurrentAdminSession(): Promise<{
+    isAuthenticated: boolean;
+    admin?: RemoteAdmin;
+    sessionToken?: string;
+  }> {
+    try {
+      this.checkElectronAPI();
+      return await this.ipcDb.getAdminSession();
+    } catch (error) {
+      console.error("Get current admin session error:", error);
+      return { isAuthenticated: false };
+    }
+  }
+
+  /**
+   * Admin logout
+   */
+  async logoutAdmin(): Promise<void> {
+    try {
+      this.checkElectronAPI();
+      await this.ipcDb.logoutAdmin();
+      console.log("Admin logged out successfully");
+    } catch (error) {
+      console.error("Admin logout error:", error);
+    }
+  }
+
+  /**
+   * Check if we're in Electron environment
+   */
+  isElectronEnvironment(): boolean {
+    return this.ipcDb.isElectronEnvironment();
+  }
+
+  /**
+   * Set quiz time limit for user and subject
+   */
+  async setQuizTimeLimit(
+    userId: string,
+    subjectId: string,
+    timeLimit: number
+  ): Promise<void> {
+    try {
+      this.checkElectronAPI();
+      await this.ipcDb.setQuizTimeLimit(userId, subjectId, timeLimit);
+    } catch (error) {
+      console.error("Set time limit error:", error);
       throw error;
     }
   }
 
   /**
-   * Validate session token
+   * Get quiz time limit for user and subject
    */
-  validateSessionToken(
-    token: string
-  ): { userId: string; subjectId: string } | null {
+  async getQuizTimeLimit(
+    userId: string,
+    subjectId: string
+  ): Promise<number | null> {
     try {
-      const decoded = atob(token);
-      const [userId, subjectId, timestamp] = decoded.split(":");
-
-      // Check if token is not too old (24 hours)
-      const tokenTime = parseInt(timestamp);
-      const now = Date.now();
-      const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-
-      if (now - tokenTime > maxAge) {
-        return null;
-      }
-
-      return { userId, subjectId };
+      this.checkElectronAPI();
+      return await this.ipcDb.getQuizTimeLimit(userId, subjectId);
     } catch (error) {
+      console.error("Get time limit error:", error);
       return null;
     }
   }
 
   /**
-   * Generate session token
+   * Clear quiz time limit for user and subject
    */
-  private generateSessionToken(userId: string, subjectId: string): string {
-    const timestamp = Date.now().toString();
-    const payload = `${userId}:${subjectId}:${timestamp}`;
-    return btoa(payload);
-  }
-
-  /**
-   * Hash PIN using bcrypt
-   */
-  private async hashPin(pin: string): Promise<string> {
-    return bcrypt.hash(pin, 10);
-  }
-
-  /**
-   * Verify PIN against hash
-   */
-  private async verifyPin(pin: string, hash: string): Promise<boolean> {
-    return bcrypt.compare(pin, hash);
-  }
-
-  /**
-   * Validate PIN format (6 digits)
-   */
-  private validatePin(pin: string): boolean {
-    const pattern = /^\d{6}$/;
-    return pattern.test(pin.trim());
-  }
-
-  /**
-   * Logout (clear session)
-   */
-  logout(): void {
-    // Clear any stored session data
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("quiz_session_token");
-      localStorage.removeItem("quiz_current_user");
+  async clearQuizTimeLimit(userId: string, subjectId: string): Promise<void> {
+    try {
+      this.checkElectronAPI();
+      await this.ipcDb.clearQuizTimeLimit(userId, subjectId);
+    } catch (error) {
+      console.error("Clear time limit error:", error);
+      throw error;
     }
   }
 }

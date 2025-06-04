@@ -13,8 +13,6 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  // Configure for Electron
-  assetPrefix: process.env.NODE_ENV === "production" ? "./" : "",
   webpack: (config, { isServer }) => {
     // Handle native node modules for Electron
     if (!isServer) {

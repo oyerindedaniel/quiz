@@ -1,7 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type {
+  NewQuizAttempt,
+  NewUser,
+  NewQuestion,
+  SessionData,
+  SyncOperationType,
+} from "../src/types";
 
 const electronAPI = {
-  // Database operations (raw SQL - legacy)
+  // Database operations (raw SQL)
   database: {
     execute: (sql: string, params: unknown[] = []) =>
       ipcRenderer.invoke("db:execute", sql, params),
@@ -17,21 +24,28 @@ const electronAPI = {
       ipcRenderer.invoke("quiz:get-questions", subjectId),
     findIncompleteAttempt: (userId: string, subjectId: string) =>
       ipcRenderer.invoke("quiz:find-incomplete-attempt", userId, subjectId),
-    createAttempt: (attemptData: any) =>
-      ipcRenderer.invoke("quiz:create-attempt", attemptData),
+    createAttempt: (
+      attemptData: Omit<NewQuizAttempt, "startedAt" | "updatedAt">
+    ) => ipcRenderer.invoke("quiz:create-attempt", attemptData),
     getAttempt: (attemptId: string) =>
       ipcRenderer.invoke("quiz:get-attempt", attemptId),
     saveAnswer: (attemptId: string, questionId: string, answer: string) =>
       ipcRenderer.invoke("quiz:save-answer", attemptId, questionId, answer),
     submit: (attemptId: string, score: number, sessionDuration: number) =>
       ipcRenderer.invoke("quiz:submit", attemptId, score, sessionDuration),
+    updateElapsedTime: (attemptId: string, elapsedTime: number) =>
+      ipcRenderer.invoke("quiz:update-elapsed-time", attemptId, elapsedTime),
+    bulkCreateQuestions: (
+      questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
+    ) => ipcRenderer.invoke("quiz:bulk-create-questions", questions),
   },
 
   // User operations (secure)
   user: {
     findByStudentCode: (studentCode: string) =>
       ipcRenderer.invoke("user:find-by-student-code", studentCode),
-    create: (userData: any) => ipcRenderer.invoke("user:create", userData),
+    create: (userData: Omit<NewUser, "createdAt" | "updatedAt">) =>
+      ipcRenderer.invoke("user:create", userData),
   },
 
   // Subject operations (secure)
@@ -59,12 +73,61 @@ const electronAPI = {
     trigger: (trigger?: "manual" | "startup" | "app_close") =>
       ipcRenderer.invoke("sync:trigger", trigger),
     getStatus: () => ipcRenderer.invoke("sync:get-status"),
-    queueOperation: (operation: {
-      type: "push" | "pull" | "conflict_resolution";
+    queueOperation: <T = Record<string, unknown>>(operation: {
+      type: SyncOperationType;
       tableName: string;
       recordId: string;
-      data: any;
+      data: T;
     }) => ipcRenderer.invoke("sync:queue-operation", operation),
+    syncQuestions: () => ipcRenderer.invoke("sync:sync-questions"),
+  },
+
+  // Seed operations (secure)
+  seed: {
+    performAutoSeeding: () => ipcRenderer.invoke("seed:auto-seeding"),
+  },
+
+  // Authentication operations (secure)
+  auth: {
+    authenticate: (studentCode: string, subjectCode: string, pin: string) =>
+      ipcRenderer.invoke("auth:authenticate", studentCode, subjectCode, pin),
+    validateSession: (token: string) =>
+      ipcRenderer.invoke("auth:validate-session", token),
+    logout: () => ipcRenderer.invoke("auth:logout"),
+    getCurrentSession: () => ipcRenderer.invoke("auth:get-current-session"),
+    storeSession: (sessionData: SessionData) =>
+      ipcRenderer.invoke("auth:store-session", sessionData),
+    setTimeLimit: (userId: string, subjectId: string, timeLimit: number) =>
+      ipcRenderer.invoke("auth:set-time-limit", userId, subjectId, timeLimit),
+    getTimeLimit: (userId: string, subjectId: string) =>
+      ipcRenderer.invoke("auth:get-time-limit", userId, subjectId),
+    clearTimeLimit: (userId: string, subjectId: string) =>
+      ipcRenderer.invoke("auth:clear-time-limit", userId, subjectId),
+  },
+
+  // Admin authentication operations (secure)
+  admin: {
+    authenticate: (username: string, password: string) =>
+      ipcRenderer.invoke("admin:authenticate", username, password),
+    validateSession: (token: string) =>
+      ipcRenderer.invoke("admin:validate-session", token),
+    logout: () => ipcRenderer.invoke("admin:logout"),
+    getCurrentSession: () => ipcRenderer.invoke("admin:get-current-session"),
+    storeSession: (sessionData: any) =>
+      ipcRenderer.invoke("admin:store-session", sessionData),
+    getDashboardStats: () => ipcRenderer.invoke("admin:get-dashboard-stats"),
+    getAllUsers: () => ipcRenderer.invoke("admin:get-all-users"),
+    getAllSubjects: () => ipcRenderer.invoke("admin:get-all-subjects"),
+    getAllQuestions: () => ipcRenderer.invoke("admin:get-all-questions"),
+    getAnalyticsData: () => ipcRenderer.invoke("admin:get-analytics-data"),
+    createAdmin: (adminData: any) =>
+      ipcRenderer.invoke("admin:create-admin", adminData),
+    deleteQuizAttempts: (studentCode: string, subjectCode: string) =>
+      ipcRenderer.invoke(
+        "admin:delete-quiz-attempts",
+        studentCode,
+        subjectCode
+      ),
   },
 };
 

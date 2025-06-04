@@ -1,7 +1,12 @@
 import { LocalDatabaseService } from "@/lib/database/local-database-service";
 import { RemoteDatabaseService } from "@/lib/database/remote-database-service";
-import { SyncError } from "@/lib/error";
-import type { SyncOperation, SyncResult, QuizAttempt } from "@/types";
+import { normalizeError, SyncError } from "@/lib/error";
+import type {
+  SyncOperation,
+  SyncResult,
+  QuizAttempt,
+  SyncOperationType,
+} from "@/types";
 import type { SyncTier } from "./sync-engine";
 
 interface QueuedOperation<T = Record<string, unknown>>
@@ -33,7 +38,7 @@ export class SyncQueue {
   constructor() {
     this.localDb = LocalDatabaseService.getInstance();
 
-    // Initialize tier queues
+    // Tier queues
     this.operations.set("critical", []);
     this.operations.set("important", []);
     this.operations.set("administrative", []);
@@ -46,7 +51,6 @@ export class SyncQueue {
     try {
       console.log("SyncQueue: Initializing queue...");
 
-      // Create queue table if it doesn't exist
       await this.createQueueTable();
 
       // Load pending operations from database
@@ -57,7 +61,7 @@ export class SyncQueue {
       throw new SyncError(
         "Failed to initialize sync queue",
         "queue_init",
-        error as Error
+        normalizeError(error)
       );
     }
   }
@@ -75,11 +79,9 @@ export class SyncQueue {
       retryCount: 0,
     };
 
-    // Add to in-memory queue (cast to base type for storage)
     const tierQueue = this.operations.get(tier)!;
     tierQueue.push(queuedOp as QueuedOperation);
 
-    // Persist to database
     await this.persistOperation(queuedOp);
 
     console.log(
@@ -103,7 +105,6 @@ export class SyncQueue {
       let totalPushed = 0;
       let totalPulled = 0;
 
-      // Process queues in priority order
       const tiers: SyncTier[] = ["critical", "important", "administrative"];
 
       for (const tier of tiers) {
@@ -112,7 +113,6 @@ export class SyncQueue {
         totalPulled += result.pulledRecords || 0;
       }
 
-      // Clean up completed operations
       await this.cleanupCompletedOperations();
 
       console.log(
@@ -204,8 +204,6 @@ export class SyncQueue {
     console.log("SyncQueue: Cleanup completed");
   }
 
-  // Private Methods
-
   private async createQueueTable(): Promise<void> {
     try {
       await this.localDb.runRawSQL(`
@@ -226,7 +224,7 @@ export class SyncQueue {
       throw new SyncError(
         "Failed to create sync queue table",
         "queue_table",
-        error as Error
+        normalizeError(error)
       );
     }
   }
@@ -238,17 +236,17 @@ export class SyncQueue {
       // Load operations that are ready to retry (past their retry time)
       const operations = (await this.localDb.executeRawSQL(
         `
-        SELECT * FROM sync_queue 
-        WHERE next_retry_at IS NULL OR next_retry_at <= ?
-        ORDER BY timestamp ASC
-      `,
+          SELECT * FROM sync_queue 
+          WHERE next_retry_at IS NULL OR next_retry_at <= ?
+          ORDER BY timestamp ASC
+        `,
         [now]
       )) as PersistedQueueOperation[];
 
       for (const op of operations) {
         const queuedOp: QueuedOperation = {
           id: op.id,
-          type: op.type as "push" | "pull" | "conflict_resolution",
+          type: op.type as SyncOperationType,
           tableName: op.table_name,
           recordId: op.record_id,
           data: JSON.parse(op.data),
@@ -315,7 +313,6 @@ export class SyncQueue {
     let pulledRecords = 0;
     const completedOps: string[] = [];
 
-    // Process operations in batches
     const batchSize = this.getBatchSize(tier);
 
     for (let i = 0; i < queue.length; i += batchSize) {
@@ -330,7 +327,6 @@ export class SyncQueue {
             pulledRecords += result.pulledRecords || 0;
             completedOps.push(operation.id);
           } else {
-            // Handle retry logic
             await this.handleOperationFailure(
               operation,
               result.error || "Unknown error"
@@ -390,11 +386,9 @@ export class SyncQueue {
     remoteDb: RemoteDatabaseService
   ): Promise<SyncResult> {
     try {
-      // For quiz attempts, use the remote service's sync method
       if (operation.tableName === "quiz_attempts") {
         await remoteDb.syncQuizAttempt(operation.data as QuizAttempt);
 
-        // Mark as synced in local database
         await this.localDb.runRawSQL(
           "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ?, sync_error = NULL WHERE id = ?",
           [new Date().toISOString(), operation.recordId]
@@ -403,7 +397,6 @@ export class SyncQueue {
         return { success: true, pushedRecords: 1 };
       }
 
-      // Handle other table types as needed
       console.warn(
         `SyncQueue: Push operation for ${operation.tableName} not implemented`
       );
@@ -546,7 +539,6 @@ export class SyncQueue {
 
   private async cleanupCompletedOperations(): Promise<void> {
     try {
-      // Remove old completed operations from sync_log (keep only last 1000)
       await this.localDb.runRawSQL(`
         DELETE FROM sync_log 
         WHERE id NOT IN (

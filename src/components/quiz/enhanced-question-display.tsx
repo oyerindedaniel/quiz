@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { QuestionItem } from "@/types";
+import { parseTextWithUnderlines } from "@/lib/utils/text-parser";
 
 interface EnhancedQuestionDisplayProps {
   questionItems: QuestionItem[];
@@ -78,7 +79,6 @@ export function EnhancedQuestionDisplay({
         </div>
 
         <div className="p-8">
-          {/* Parse passage content to handle PASSAGE headers */}
           {content.split("\n\n").map((paragraph, index) => {
             if (paragraph.trim().startsWith("PASSAGE")) {
               return (
@@ -86,7 +86,7 @@ export function EnhancedQuestionDisplay({
                   key={index}
                   className="text-lg font-bold text-brand-700 mb-4"
                 >
-                  {paragraph.trim()}
+                  {parseTextWithUnderlines(paragraph.trim())}
                 </h3>
               );
             }
@@ -96,7 +96,7 @@ export function EnhancedQuestionDisplay({
                   key={index}
                   className="text-gray-700 font-medium mb-6 italic"
                 >
-                  {paragraph.trim()}
+                  {parseTextWithUnderlines(paragraph.trim())}
                 </p>
               );
             }
@@ -105,14 +105,13 @@ export function EnhancedQuestionDisplay({
                 key={index}
                 className="text-gray-800 leading-relaxed mb-4 text-justify"
               >
-                {paragraph.trim()}
+                {parseTextWithUnderlines(paragraph.trim())}
               </p>
             );
           })}
         </div>
       </div>
 
-      {/* Navigation for passage */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
         <div className="flex items-center justify-between">
           <Button
@@ -182,7 +181,6 @@ export function EnhancedQuestionDisplay({
     questionItem: QuestionItem
   ) => (
     <div className="w-full max-w-4xl mx-auto p-6 space-y-6">
-      {/* Header Section */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
         <div className="bg-progress-500 px-6 py-4">
           <Badge variant="secondary" className="bg-white text-progress-700">
@@ -196,7 +194,6 @@ export function EnhancedQuestionDisplay({
         </div>
       </div>
 
-      {/* Question Section */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
         <div className="bg-brand-500 px-6 py-4">
           <div className="flex items-center justify-between">
@@ -208,10 +205,9 @@ export function EnhancedQuestionDisplay({
 
         <div className="p-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-6 leading-relaxed">
-            {questionItem.content}
+            {parseTextWithUnderlines(questionItem.content)}
           </h2>
 
-          {/* Answer Options */}
           {questionItem.options && questionItem.options.length > 0 && (
             <div className="space-y-4">
               {questionItem.options.map((option, index) => {
@@ -244,7 +240,7 @@ export function EnhancedQuestionDisplay({
                         {optionLabel}
                       </span>
                       <span className="text-base leading-relaxed pt-1">
-                        {option}
+                        {parseTextWithUnderlines(option)}
                       </span>
                     </div>
                   </button>
@@ -255,7 +251,6 @@ export function EnhancedQuestionDisplay({
         </div>
       </div>
 
-      {/* Navigation Controls */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
         <div className="flex items-center justify-between">
           <Button
@@ -401,7 +396,7 @@ export function EnhancedQuestionDisplay({
 
         <div className="p-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-6 leading-relaxed">
-            {questionItem.content}
+            {parseTextWithUnderlines(questionItem.content)}
           </h2>
 
           {questionItem.options && questionItem.options.length > 0 && (
@@ -436,7 +431,7 @@ export function EnhancedQuestionDisplay({
                         {optionLabel}
                       </span>
                       <span className="text-base leading-relaxed pt-1">
-                        {option}
+                        {parseTextWithUnderlines(option)}
                       </span>
                     </div>
                   </button>

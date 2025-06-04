@@ -12,6 +12,7 @@ import type { NewQuizAttempt } from "../database/local-schema";
 export class QuizController {
   private ipcDb: IPCDatabaseService;
   private currentSession: QuizSession | null = null;
+  private sessionStartTime: number = Date.now();
 
   constructor() {
     this.ipcDb = new IPCDatabaseService();
@@ -60,13 +61,18 @@ export class QuizController {
       questions.length - 1
     );
 
+    this.sessionStartTime = Date.now();
+
     this.currentSession = {
       attemptId: attempt.id,
       questions,
       currentQuestionIndex,
       answers,
       isResume: true,
+      elapsedTime: attempt.elapsedTime || 0, // Previous elapsed time
     };
+
+    await this.updateElapsedTime();
 
     return this.currentSession;
   }
@@ -89,9 +95,12 @@ export class QuizController {
       userId,
       subjectId,
       totalQuestions: questions.length,
+      elapsedTime: 0,
     };
 
     const attemptId = await this.ipcDb.createQuizAttempt(attemptData);
+
+    this.sessionStartTime = Date.now();
 
     this.currentSession = {
       attemptId,
@@ -99,9 +108,48 @@ export class QuizController {
       currentQuestionIndex: 0,
       answers: {},
       isResume: false,
+      elapsedTime: 0,
     };
 
     return this.currentSession;
+  }
+
+  /**
+   * Update elapsed time in database
+   */
+  async updateElapsedTime(): Promise<void> {
+    if (!this.currentSession) return;
+
+    try {
+      const currentElapsed = Math.floor(
+        (Date.now() - this.sessionStartTime) / 1000
+      );
+      const totalElapsed =
+        (this.currentSession.elapsedTime || 0) + currentElapsed;
+
+      await this.ipcDb.updateElapsedTime(
+        this.currentSession.attemptId,
+        totalElapsed
+      );
+
+      // Reset session start time after updating
+      this.sessionStartTime = Date.now();
+      this.currentSession.elapsedTime = totalElapsed;
+    } catch (error) {
+      console.error("Failed to update elapsed time:", error);
+    }
+  }
+
+  /**
+   * Get total elapsed time including previous sessions
+   */
+  getElapsedTime(): number {
+    if (!this.currentSession) return 0;
+
+    const currentSessionElapsed = Math.floor(
+      (Date.now() - this.sessionStartTime) / 1000
+    );
+    return (this.currentSession.elapsedTime || 0) + currentSessionElapsed;
   }
 
   /**
@@ -206,6 +254,8 @@ export class QuizController {
       this.currentSession.answers[currentQuestion.id] =
         selectedOption.toUpperCase();
 
+      await this.updateElapsedTime();
+
       return {
         success: true,
         nextQuestionIndex: this.currentSession.currentQuestionIndex,
@@ -238,6 +288,8 @@ export class QuizController {
 
       const scoreResult = this.calculateScore();
       const sessionDuration = this.calculateSessionDuration(attempt.startedAt);
+
+      await this.updateElapsedTime();
 
       await this.ipcDb.submitQuiz(
         this.currentSession.attemptId,

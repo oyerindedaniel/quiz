@@ -3,16 +3,16 @@ import { RemoteDatabaseService } from "@/lib/database/remote-database-service";
 import { SyncQueue } from "./sync-queue";
 import { ConflictResolver } from "./conflict-resolver";
 import { ConnectivityHandler } from "./connectivity-handler";
-import { SyncError } from "@/lib/error";
+import { normalizeError, SyncError } from "@/lib/error";
+import { AutoSeedingService } from "@/lib/seeding/auto-seeding-service";
 import type {
   SyncOperation,
   SyncStatus,
   SyncResult,
   QuizAttempt,
-  User,
-  Subject,
-  Question,
+  NewQuestion,
 } from "@/types";
+import { isElectron } from "../utils";
 
 export type SyncTrigger =
   | "startup"
@@ -33,6 +33,10 @@ export interface SyncConfiguration {
     periodic: number;
     background: number;
   };
+}
+
+interface CountResult {
+  count: number;
 }
 
 export class SyncEngine {
@@ -103,19 +107,15 @@ export class SyncEngine {
     try {
       console.log("SyncEngine: Initializing...");
 
-      // Set remote database if available
       if (remoteDb) {
         this.remoteDb = remoteDb;
       }
 
-      // Initialize components
       await this.syncQueue.initialize();
       this.connectivityHandler.initialize();
 
-      // Set up event listeners
       this.setupEventListeners();
 
-      // Check connectivity and update status
       await this.updateConnectivityStatus();
 
       // Start periodic sync if online
@@ -126,14 +126,13 @@ export class SyncEngine {
       this.isInitialized = true;
       console.log("SyncEngine: Initialization complete");
 
-      // Trigger startup sync
       await this.triggerSync("startup");
     } catch (error) {
       console.error("SyncEngine: Initialization failed:", error);
       throw new SyncError(
         "Failed to initialize sync engine",
         "initialization",
-        error as Error
+        normalizeError(error)
       );
     }
   }
@@ -149,7 +148,6 @@ export class SyncEngine {
       throw new SyncError("Sync engine not initialized", "trigger_sync");
     }
 
-    // Prevent concurrent sync operations unless forced
     if (this.isSyncInProgress && !options.force) {
       console.log("SyncEngine: Sync already in progress, skipping");
       return { success: false, error: "Sync already in progress" };
@@ -161,7 +159,6 @@ export class SyncEngine {
 
       console.log(`SyncEngine: Starting sync triggered by: ${trigger}`);
 
-      // Update connectivity status
       await this.updateConnectivityStatus();
 
       if (!this.currentSyncStatus.isOnline) {
@@ -174,7 +171,6 @@ export class SyncEngine {
         return { success: false, error: "Remote database not available" };
       }
 
-      // Execute sync based on trigger type
       let result: SyncResult;
 
       switch (trigger) {
@@ -203,7 +199,6 @@ export class SyncEngine {
           result = await this.performPeriodicSync();
       }
 
-      // Update sync timestamps
       if (result.success) {
         await this.updateSyncTimestamps();
       }
@@ -213,7 +208,7 @@ export class SyncEngine {
       console.error("SyncEngine: Sync operation failed:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown sync error",
+        error: normalizeError(error).message,
       };
     } finally {
       this.isSyncInProgress = false;
@@ -284,10 +279,7 @@ export class SyncEngine {
     console.log("SyncEngine: Cleanup completed");
   }
 
-  // Private Methods
-
   private setupEventListeners(): void {
-    // Network connectivity events
     this.connectivityHandler.onConnectivityChange(async (isOnline: boolean) => {
       this.currentSyncStatus.isOnline = isOnline;
 
@@ -302,7 +294,7 @@ export class SyncEngine {
     });
 
     // App lifecycle events (if in Electron)
-    if (typeof window !== "undefined" && window.electronAPI) {
+    if (isElectron()) {
       // These would be set up in the main process and communicated via IPC
       // For now, we'll handle them in the sync triggers
     }
@@ -312,16 +304,15 @@ export class SyncEngine {
     const isOnline = await this.connectivityHandler.checkConnectivity();
     this.currentSyncStatus.isOnline = isOnline;
 
-    // Update local changes count
     this.currentSyncStatus.localChanges = await this.countLocalChanges();
   }
 
   private async countLocalChanges(): Promise<number> {
     try {
-      const unsyncedAttempts = await this.localDb.executeRawSQL(
+      const unsyncedAttempts = (await this.localDb.executeRawSQL(
         "SELECT COUNT(*) as count FROM quiz_attempts WHERE synced = 0 AND submitted = 1"
-      );
-      return (unsyncedAttempts[0] as any)?.count || 0;
+      )) as CountResult[];
+      return unsyncedAttempts[0]?.count || 0;
     } catch {
       return 0;
     }
@@ -408,7 +399,7 @@ export class SyncEngine {
       throw new SyncError(
         "Startup sync failed",
         "startup_sync",
-        error as Error
+        normalizeError(error)
       );
     }
   }
@@ -416,7 +407,6 @@ export class SyncEngine {
   private async performCriticalSync(): Promise<SyncResult> {
     console.log("SyncEngine: Performing critical sync (quiz submissions)");
 
-    // Force WAL checkpoint to ensure data is written
     await this.forceWALCheckpoint();
 
     return this.pushCriticalData();
@@ -431,10 +421,8 @@ export class SyncEngine {
     console.log("SyncEngine: Performing reconnection sync");
 
     try {
-      // Process all queued operations
       const queueResult = await this.syncQueue.processQueue(this.remoteDb!);
 
-      // Push any remaining local changes
       const pushResult = await this.pushAllLocalChanges();
 
       return {
@@ -447,13 +435,12 @@ export class SyncEngine {
       throw new SyncError(
         "Reconnection sync failed",
         "reconnection_sync",
-        error as Error
+        normalizeError(error)
       );
     }
   }
 
   private async performPeriodicSync(): Promise<SyncResult> {
-    // Light sync - only push new changes and pull updates
     try {
       const pushResult = await this.pushImportantData();
       return {
@@ -489,7 +476,11 @@ export class SyncEngine {
         note: "Full sync completed",
       };
     } catch (error) {
-      throw new SyncError("Full sync failed", "full_sync", error as Error);
+      throw new SyncError(
+        "Full sync failed",
+        "full_sync",
+        normalizeError(error)
+      );
     }
   }
 
@@ -518,10 +509,8 @@ export class SyncEngine {
 
       for (const attempt of unsyncedAttempts) {
         try {
-          // Push to remote
           await this.remoteDb.syncQuizAttempt(attempt);
 
-          // Mark as synced locally
           await this.localDb.runRawSQL(
             "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ?, sync_error = NULL WHERE id = ?",
             [new Date().toISOString(), attempt.id]
@@ -529,7 +518,6 @@ export class SyncEngine {
 
           pushedRecords++;
 
-          // Log successful sync
           await this.logSyncOperation(
             "push",
             "quiz_attempts",
@@ -537,19 +525,21 @@ export class SyncEngine {
             "success"
           );
         } catch (error) {
-          // Log failed sync but continue with others
           await this.logSyncOperation(
             "push",
             "quiz_attempts",
             attempt.id,
             "failed",
-            error as Error
+            normalizeError(error)
           );
 
-          // Update sync error on local record
           await this.localDb.runRawSQL(
             "UPDATE quiz_attempts SET sync_attempted_at = ?, sync_error = ? WHERE id = ?",
-            [new Date().toISOString(), (error as Error).message, attempt.id]
+            [
+              new Date().toISOString(),
+              normalizeError(error).message,
+              attempt.id,
+            ]
           );
         }
       }
@@ -560,7 +550,7 @@ export class SyncEngine {
       throw new SyncError(
         "Failed to push critical data",
         "push_critical",
-        error as Error
+        normalizeError(error)
       );
     }
   }
@@ -578,7 +568,6 @@ export class SyncEngine {
 
       let pushedRecords = 0;
 
-      // Process in smaller batches for important data
       const batchSize = this.config.batchSizes.important;
 
       for (let i = 0; i < unsyncedAttempts.length; i += batchSize) {
@@ -606,7 +595,7 @@ export class SyncEngine {
               "quiz_attempts",
               attempt.id,
               "failed",
-              error as Error
+              normalizeError(error)
             );
           }
         }
@@ -634,16 +623,12 @@ export class SyncEngine {
       throw new SyncError(
         "Failed to push all local changes",
         "push_all",
-        error as Error
+        normalizeError(error)
       );
     }
   }
 
   private async pullFreshData(): Promise<SyncResult> {
-    if (!this.remoteDb) {
-      return { success: false, error: "Remote database not available" };
-    }
-
     try {
       let pulledRecords = 0;
 
@@ -655,59 +640,147 @@ export class SyncEngine {
         "SELECT COUNT(*) as count FROM subjects"
       );
 
-      const hasUsers = (userCount[0] as any)?.count > 0;
-      const hasSubjects = (subjectCount[0] as any)?.count > 0;
+      const hasUsers = (userCount[0] as CountResult)?.count > 0;
+      const hasSubjects = (subjectCount[0] as CountResult)?.count > 0;
 
-      if (!hasUsers || !hasSubjects) {
+      if (hasUsers && hasSubjects) {
         console.log(
-          "SyncEngine: Empty local database, performing initial data pull"
+          "SyncEngine: Local database already populated, skipping initial data pull"
         );
-
-        // Pull users, subjects, and questions
-        const syncData = await this.remoteDb.pullLatestData();
-
-        // Insert users
-        for (const user of syncData.users) {
-          try {
-            await this.localDb.createUser(user);
-            pulledRecords++;
-          } catch (error) {
-            console.warn("Failed to create user:", user.studentCode, error);
-          }
-        }
-
-        // Insert subjects
-        for (const subject of syncData.subjects) {
-          try {
-            await this.localDb.createSubject(subject);
-            pulledRecords++;
-          } catch (error) {
-            console.warn(
-              "Failed to create subject:",
-              subject.subjectCode,
-              error
-            );
-          }
-        }
-
-        // Insert questions
-        for (const question of syncData.questions) {
-          try {
-            await this.localDb.createQuestion(question);
-            pulledRecords++;
-          } catch (error) {
-            console.warn("Failed to create question:", question.id, error);
-          }
-        }
+        return {
+          success: true,
+          pulledRecords: 0,
+          note: "Local database already populated",
+        };
       }
 
-      console.log(`SyncEngine: Pulled ${pulledRecords} fresh records`);
-      return { success: true, pulledRecords };
+      console.log(
+        "SyncEngine: Empty local database detected, attempting data sync..."
+      );
+
+      // **Network Connectivity Assessment** - Try remote first, fallback to local seeding
+      if (this.currentSyncStatus.isOnline && this.remoteDb) {
+        const remoteConnected = await this.remoteDb.checkConnection();
+
+        if (remoteConnected) {
+          console.log(
+            "SyncEngine: Online and remote connected, performing remote data pull"
+          );
+
+          try {
+            // Pull users, subjects, and questions from remote
+            const syncData = await this.remoteDb.pullLatestData();
+
+            // Insert users
+            for (const user of syncData.users) {
+              try {
+                await this.localDb.createUser(user);
+                pulledRecords++;
+              } catch (error) {
+                console.warn("Failed to create user:", user.studentCode, error);
+              }
+            }
+
+            // Insert subjects
+            for (const subject of syncData.subjects) {
+              try {
+                await this.localDb.createSubject(subject);
+                pulledRecords++;
+              } catch (error) {
+                console.warn(
+                  "Failed to create subject:",
+                  subject.subjectCode,
+                  error
+                );
+              }
+            }
+
+            // Insert questions
+            for (const question of syncData.questions) {
+              try {
+                const {
+                  createdAt,
+                  updatedAt,
+                  createdBy,
+                  explanation,
+                  ...rest
+                } = question;
+                await this.localDb.createQuestion(
+                  rest as Omit<NewQuestion, "createdAt" | "updatedAt">
+                );
+                pulledRecords++;
+              } catch (error) {
+                console.warn("Failed to create question:", question.id, error);
+              }
+            }
+
+            console.log(
+              `SyncEngine: Successfully pulled ${pulledRecords} fresh records from remote`
+            );
+            return {
+              success: true,
+              pulledRecords,
+              note: "Initial data sync completed successfully from remote",
+            };
+          } catch (remoteError) {
+            console.error(
+              "SyncEngine: Remote data pull failed, falling back to local seeding:",
+              remoteError
+            );
+          }
+        } else {
+          console.log(
+            "SyncEngine: Remote database connection failed, falling back to local seeding"
+          );
+        }
+      } else {
+        console.log("SyncEngine: Offline mode detected, using local seeding");
+      }
+
+      console.log("SyncEngine: Performing automatic local database seeding...");
+
+      try {
+        if (!isElectron()) {
+          return {
+            success: false,
+            error: "Local seeding requires Electron environment",
+            note: "Cannot seed data in browser environment",
+          };
+        }
+
+        const seedResult = await AutoSeedingService.performAutoSeeding();
+
+        if (seedResult.success) {
+          console.log(
+            `SyncEngine: Successfully seeded ${seedResult.totalRecords} records locally`
+          );
+          return {
+            success: true,
+            pulledRecords: seedResult.totalRecords,
+            note: "Initial data populated using local seeding (offline mode)",
+          };
+        } else {
+          console.error("SyncEngine: Local seeding failed:", seedResult.error);
+          return {
+            success: false,
+            error: `Local seeding failed: ${seedResult.error}`,
+            note: "Unable to populate initial data - both remote sync and local seeding failed",
+          };
+        }
+      } catch (seedError) {
+        console.error("SyncEngine: Local seeding failed:", seedError);
+        return {
+          success: false,
+          error: `Local seeding failed: ${normalizeError(seedError).message}`,
+          note: "Unable to populate initial data - both remote sync and local seeding failed",
+        };
+      }
     } catch (error) {
+      console.error("SyncEngine: Error in pullFreshData:", error);
       throw new SyncError(
         "Failed to pull fresh data",
         "pull_fresh",
-        error as Error
+        normalizeError(error)
       );
     }
   }
@@ -743,7 +816,10 @@ export class SyncEngine {
         ]
       );
     } catch (logError) {
-      console.error("SyncEngine: Failed to log sync operation:", logError);
+      console.error(
+        "SyncEngine: Failed to log sync operation:",
+        normalizeError(logError).message
+      );
     }
   }
 }

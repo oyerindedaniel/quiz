@@ -10,9 +10,17 @@ import type {
   NewRemoteQuestion,
   RemoteQuizAttempt,
   NewRemoteQuizAttempt,
+  RemoteAdmin,
 } from "./remote-schema";
 import type { QuizAttempt } from "./local-schema";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { SubjectWithStats, UserWithAttempts, AdminRole } from "@/types";
+
+interface ModifiedRecordsResult {
+  id: string;
+  updatedAt: Date;
+  [key: string]: unknown;
+}
 
 export class RemoteDatabaseService {
   private static instance: RemoteDatabaseService;
@@ -321,7 +329,6 @@ export class RemoteDatabaseService {
     const db = this.getDb();
 
     try {
-      // Use upsert pattern - try to insert, update if exists
       await db
         .insert(remoteSchema.quizAttempts)
         .values({
@@ -368,9 +375,9 @@ export class RemoteDatabaseService {
    * Pull latest data for initial sync (used by sync engine)
    */
   async pullLatestData(): Promise<{
-    users: any[];
-    subjects: any[];
-    questions: any[];
+    users: RemoteUser[];
+    subjects: RemoteSubject[];
+    questions: RemoteQuestion[];
   }> {
     const db = this.getDb();
 
@@ -400,19 +407,22 @@ export class RemoteDatabaseService {
           // Convert for local schema compatibility
           createdAt: user.createdAt.toISOString(),
           updatedAt: user.updatedAt.toISOString(),
-        })),
+          ...(user.lastLogin && {
+            lastLogin: user.lastLogin.toISOString(),
+          }),
+        })) as unknown as RemoteUser[],
         subjects: subjects.map((subject) => ({
           ...subject,
           createdAt: subject.createdAt.toISOString(),
           updatedAt: subject.updatedAt.toISOString(),
-        })),
+        })) as unknown as RemoteSubject[],
         questions: questions.map((question) => ({
           ...question,
           // Convert JSONB options to string for local SQLite
           options: JSON.stringify(question.options),
           createdAt: question.createdAt.toISOString(),
           updatedAt: question.updatedAt.toISOString(),
-        })),
+        })) as unknown as RemoteQuestion[],
       };
     } catch (error) {
       console.error(
@@ -427,32 +437,90 @@ export class RemoteDatabaseService {
 
   // Sync operations
   async getRecordsModifiedAfter(
-    tableName: keyof typeof remoteSchema,
+    tableName: "users" | "subjects" | "questions" | "quizAttempts",
     timestamp: string
-  ): Promise<any[]> {
+  ): Promise<ModifiedRecordsResult[]> {
     const db = this.getDb();
-    const table = remoteSchema[tableName];
 
-    return db
-      .select()
-      .from(table)
-      .where(eq((table as any).updatedAt, timestamp))
-      .orderBy((table as any).updatedAt);
+    switch (tableName) {
+      case "users":
+        return db
+          .select()
+          .from(remoteSchema.users)
+          .where(eq(remoteSchema.users.updatedAt, new Date(timestamp)))
+          .orderBy(remoteSchema.users.updatedAt);
+
+      case "subjects":
+        return db
+          .select()
+          .from(remoteSchema.subjects)
+          .where(eq(remoteSchema.subjects.updatedAt, new Date(timestamp)))
+          .orderBy(remoteSchema.subjects.updatedAt);
+
+      case "questions":
+        return db
+          .select()
+          .from(remoteSchema.questions)
+          .where(eq(remoteSchema.questions.updatedAt, new Date(timestamp)))
+          .orderBy(remoteSchema.questions.updatedAt);
+
+      case "quizAttempts":
+        return db
+          .select()
+          .from(remoteSchema.quizAttempts)
+          .where(eq(remoteSchema.quizAttempts.updatedAt, new Date(timestamp)))
+          .orderBy(remoteSchema.quizAttempts.updatedAt);
+
+      default:
+        throw new Error(`Unsupported table for sync: ${tableName}`);
+    }
   }
 
   async getLatestTimestamp(
-    tableName: keyof typeof remoteSchema
+    tableName: "users" | "subjects" | "questions" | "quizAttempts"
   ): Promise<string | null> {
     const db = this.getDb();
-    const table = remoteSchema[tableName];
 
-    const result = await db
-      .select({ updatedAt: (table as any).updatedAt })
-      .from(table)
-      .orderBy((table as any).updatedAt)
-      .limit(1);
+    let result;
 
-    return result[0]?.updatedAt || null;
+    switch (tableName) {
+      case "users":
+        result = await db
+          .select({ updatedAt: remoteSchema.users.updatedAt })
+          .from(remoteSchema.users)
+          .orderBy(remoteSchema.users.updatedAt)
+          .limit(1);
+        break;
+
+      case "subjects":
+        result = await db
+          .select({ updatedAt: remoteSchema.subjects.updatedAt })
+          .from(remoteSchema.subjects)
+          .orderBy(remoteSchema.subjects.updatedAt)
+          .limit(1);
+        break;
+
+      case "questions":
+        result = await db
+          .select({ updatedAt: remoteSchema.questions.updatedAt })
+          .from(remoteSchema.questions)
+          .orderBy(remoteSchema.questions.updatedAt)
+          .limit(1);
+        break;
+
+      case "quizAttempts":
+        result = await db
+          .select({ updatedAt: remoteSchema.quizAttempts.updatedAt })
+          .from(remoteSchema.quizAttempts)
+          .orderBy(remoteSchema.quizAttempts.updatedAt)
+          .limit(1);
+        break;
+
+      default:
+        throw new Error(`Unsupported table for timestamp: ${tableName}`);
+    }
+
+    return result[0]?.updatedAt?.toISOString() || null;
   }
 
   // Database management
@@ -491,5 +559,512 @@ export class RemoteDatabaseService {
       this.neonManager = null;
     }
     this.db = null;
+  }
+
+  // ===== ADMIN OPERATIONS =====
+
+  /**
+   * Find admin user by username for authentication
+   */
+  async findAdminByUsername(username: string): Promise<RemoteAdmin | null> {
+    try {
+      if (!this.db) {
+        throw new Error("Database not initialized");
+      }
+
+      const result = await this.db
+        .select()
+        .from(remoteSchema.admins)
+        .where(eq(remoteSchema.admins.username, username))
+        .limit(1);
+
+      return result[0] || null;
+    } catch (error) {
+      console.error("Find admin by username error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Find admin user by ID
+   */
+  async findAdminById(adminId: string): Promise<RemoteAdmin | null> {
+    try {
+      if (!this.db) {
+        throw new Error("Database not initialized");
+      }
+
+      const result = await this.db
+        .select()
+        .from(remoteSchema.admins)
+        .where(eq(remoteSchema.admins.id, adminId))
+        .limit(1);
+
+      return result[0] || null;
+    } catch (error) {
+      console.error("Find admin by ID error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update admin last login timestamp
+   */
+  async updateAdminLastLogin(adminId: string): Promise<void> {
+    const db = this.getDb();
+    const now = new Date();
+
+    await db
+      .update(remoteSchema.admins)
+      .set({
+        lastLogin: now,
+        updatedAt: now,
+      })
+      .where(eq(remoteSchema.admins.id, adminId));
+  }
+
+  // Admin Dashboard Methods
+  async getDashboardStats(): Promise<{
+    totalUsers: number;
+    totalSubjects: number;
+    totalQuestions: number;
+    totalAttempts: number;
+    onlineUsers: number;
+    pendingSyncs: number;
+  }> {
+    const db = this.getDb();
+
+    const [users, subjects, questions, attempts] = await Promise.all([
+      db
+        .select()
+        .from(remoteSchema.users)
+        .where(eq(remoteSchema.users.isActive, true)),
+      db
+        .select()
+        .from(remoteSchema.subjects)
+        .where(eq(remoteSchema.subjects.isActive, true)),
+      db
+        .select()
+        .from(remoteSchema.questions)
+        .where(eq(remoteSchema.questions.isActive, true)),
+      db
+        .select()
+        .from(remoteSchema.quizAttempts)
+        .where(eq(remoteSchema.quizAttempts.submitted, true)),
+    ]);
+
+    // For now, we'll return 0 for onlineUsers and pendingSyncs as these would require additional tracking
+    return {
+      totalUsers: users.length,
+      totalSubjects: subjects.length,
+      totalQuestions: questions.length,
+      totalAttempts: attempts.length,
+      onlineUsers: 0,
+      pendingSyncs: 0,
+    };
+  }
+
+  async getAllUsersWithAttempts(): Promise<Array<UserWithAttempts>> {
+    const db = this.getDb();
+
+    const usersWithAttempts = await db.query.users.findMany({
+      where: (users, { eq }) => eq(users.isActive, true),
+      with: {
+        quizAttempts: {
+          where: (attempts, { eq }) => eq(attempts.submitted, true),
+          with: {
+            subject: true,
+          },
+          orderBy: (attempts, { desc }) => desc(attempts.submittedAt),
+        },
+      },
+      orderBy: (users, { asc }) => asc(users.studentCode),
+    });
+
+    return usersWithAttempts.map((user) => {
+      const [firstName, ...lastNameParts] = user.name.split(" ");
+      return {
+        id: user.id,
+        studentCode: user.studentCode,
+        firstName: firstName || "",
+        lastName: lastNameParts.join(" ") || "",
+        className: user.class,
+        gender: user.gender,
+        pin: "****",
+        createdAt: user.createdAt.toISOString(),
+        updatedAt: user.updatedAt.toISOString(),
+        quizAttempts: user.quizAttempts.map((attempt) => ({
+          id: attempt.id,
+          subjectId: attempt.subjectId,
+          subjectName: attempt.subject?.name || "Unknown Subject",
+          score: attempt.score || 0,
+          completedAt: attempt.submittedAt?.toISOString() || "",
+          sessionDuration: attempt.sessionDuration || 0,
+          totalQuestions: attempt.totalQuestions || 0,
+        })),
+      };
+    });
+  }
+
+  async getAllSubjectsWithStats(): Promise<Array<SubjectWithStats>> {
+    const db = this.getDb();
+
+    const subjectsWithStats = await db.query.subjects.findMany({
+      where: (subjects, { eq }) => eq(subjects.isActive, true),
+      with: {
+        questions: {
+          where: (questions, { eq }) => eq(questions.isActive, true),
+        },
+        quizAttempts: {
+          where: (attempts, { eq }) => eq(attempts.submitted, true),
+          columns: {
+            id: true,
+            score: true,
+          },
+        },
+      },
+      orderBy: (subjects, { asc }) => asc(subjects.name),
+    });
+
+    return subjectsWithStats.map((subject) => {
+      const scores = subject.quizAttempts
+        .map((attempt) => attempt.score)
+        .filter((score): score is number => score !== null);
+
+      return {
+        id: subject.id,
+        subjectCode: subject.subjectCode,
+        subjectName: subject.name,
+        description: subject.description || "",
+        createdAt: subject.createdAt.toISOString(),
+        updatedAt: subject.updatedAt.toISOString(),
+        questionCount: subject.questions.length,
+        attemptCount: subject.quizAttempts.length,
+        averageScore:
+          scores.length > 0
+            ? Math.round(
+                scores.reduce((sum, score) => sum + score, 0) / scores.length
+              )
+            : 0,
+      };
+    });
+  }
+
+  async getAllQuestionsWithStats(): Promise<
+    Array<{
+      id: string;
+      subjectId: string;
+      subjectName: string;
+      questionText: string;
+      questionType: string;
+      difficulty: string;
+      correctAnswer: string;
+      createdAt: string;
+      updatedAt: string;
+      attemptCount: number;
+      correctRate: number;
+    }>
+  > {
+    const db = this.getDb();
+
+    const questionsQuery = await db
+      .select({
+        questionId: remoteSchema.questions.id,
+        subjectId: remoteSchema.questions.subjectId,
+        subjectName: remoteSchema.subjects.name,
+        questionText: remoteSchema.questions.text,
+        correctAnswer: remoteSchema.questions.answer,
+        createdAt: remoteSchema.questions.createdAt,
+        updatedAt: remoteSchema.questions.updatedAt,
+        // Note: We'll need to add these fields to the schema or derive them
+        // For now, we'll provide default values
+      })
+      .from(remoteSchema.questions)
+      .leftJoin(
+        remoteSchema.subjects,
+        eq(remoteSchema.questions.subjectId, remoteSchema.subjects.id)
+      )
+      .where(eq(remoteSchema.questions.isActive, true))
+      .orderBy(remoteSchema.questions.createdAt);
+
+    // For now, return basic question data with placeholder stats
+    return questionsQuery.map((row) => ({
+      id: row.questionId,
+      subjectId: row.subjectId,
+      subjectName: row.subjectName || "Unknown Subject",
+      questionText: row.questionText,
+      questionType: "multiple-choice", // Default value
+      difficulty: "medium", // Default value
+      correctAnswer: row.correctAnswer,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      attemptCount: 0, // Would need to calculate from quiz attempts
+      correctRate: 0, // Would need to calculate from quiz attempts
+    }));
+  }
+
+  async getAnalyticsData(): Promise<{
+    quizAttemptsByDay: Array<{ date: string; attempts: number }>;
+    scoreDistribution: Array<{ range: string; count: number }>;
+    subjectPerformance: Array<{
+      subjectName: string;
+      averageScore: number;
+      totalAttempts: number;
+    }>;
+    topPerformers: Array<{
+      studentName: string;
+      studentCode: string;
+      averageScore: number;
+      totalAttempts: number;
+    }>;
+  }> {
+    const db = this.getDb();
+
+    const attemptsQuery = await db
+      .select({
+        attemptId: remoteSchema.quizAttempts.id,
+        userId: remoteSchema.quizAttempts.userId,
+        subjectId: remoteSchema.quizAttempts.subjectId,
+        score: remoteSchema.quizAttempts.score,
+        submittedAt: remoteSchema.quizAttempts.submittedAt,
+        userName: remoteSchema.users.name,
+        userCode: remoteSchema.users.studentCode,
+        subjectName: remoteSchema.subjects.name,
+      })
+      .from(remoteSchema.quizAttempts)
+      .leftJoin(
+        remoteSchema.users,
+        eq(remoteSchema.quizAttempts.userId, remoteSchema.users.id)
+      )
+      .leftJoin(
+        remoteSchema.subjects,
+        eq(remoteSchema.quizAttempts.subjectId, remoteSchema.subjects.id)
+      )
+      .where(eq(remoteSchema.quizAttempts.submitted, true))
+      .orderBy(remoteSchema.quizAttempts.submittedAt);
+
+    const attemptsByDay = new Map<string, number>();
+    const scoreRanges = { "0-40": 0, "41-60": 0, "61-80": 0, "81-100": 0 };
+    const subjectStats = new Map<string, { scores: number[]; count: number }>();
+    const userStats = new Map<
+      string,
+      { scores: number[]; name: string; code: string }
+    >();
+
+    for (const attempt of attemptsQuery) {
+      if (attempt.submittedAt && attempt.score !== null) {
+        // Group by day
+        const date = attempt.submittedAt.toISOString().split("T")[0];
+        attemptsByDay.set(date, (attemptsByDay.get(date) || 0) + 1);
+
+        // Score distribution
+        const score = attempt.score;
+        if (score <= 40) scoreRanges["0-40"]++;
+        else if (score <= 60) scoreRanges["41-60"]++;
+        else if (score <= 80) scoreRanges["61-80"]++;
+        else scoreRanges["81-100"]++;
+
+        // Subject performance
+        const subjectName = attempt.subjectName || "Unknown";
+        if (!subjectStats.has(subjectName)) {
+          subjectStats.set(subjectName, { scores: [], count: 0 });
+        }
+        const subjectStat = subjectStats.get(subjectName)!;
+        subjectStat.scores.push(score);
+        subjectStat.count++;
+
+        // User performance
+        const userId = attempt.userId;
+        if (!userStats.has(userId)) {
+          userStats.set(userId, {
+            scores: [],
+            name: attempt.userName || "Unknown",
+            code: attempt.userCode || "Unknown",
+          });
+        }
+        userStats.get(userId)!.scores.push(score);
+      }
+    }
+
+    const quizAttemptsByDay = Array.from(attemptsByDay.entries())
+      .map(([date, attempts]) => ({ date, attempts }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const scoreDistribution = Object.entries(scoreRanges).map(
+      ([range, count]) => ({ range, count })
+    );
+
+    const subjectPerformance = Array.from(subjectStats.entries())
+      .map(([subjectName, stats]) => ({
+        subjectName,
+        averageScore: Math.round(
+          stats.scores.reduce((sum, score) => sum + score, 0) /
+            stats.scores.length
+        ),
+        totalAttempts: stats.count,
+      }))
+      .sort((a, b) => b.averageScore - a.averageScore);
+
+    const topPerformers = Array.from(userStats.entries())
+      .map(([userId, stats]) => ({
+        studentName: stats.name,
+        studentCode: stats.code,
+        averageScore: Math.round(
+          stats.scores.reduce((sum, score) => sum + score, 0) /
+            stats.scores.length
+        ),
+        totalAttempts: stats.scores.length,
+      }))
+      .sort((a, b) => b.averageScore - a.averageScore)
+      .slice(0, 10);
+
+    return {
+      quizAttemptsByDay,
+      scoreDistribution,
+      subjectPerformance,
+      topPerformers,
+    };
+  }
+
+  /**
+   * Create a new admin user
+   */
+  async createAdmin(adminData: {
+    email: string;
+    username: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    role: string;
+    phoneNumber?: string;
+    permissions?: Record<string, boolean>;
+  }): Promise<{ success: boolean; error?: string; admin?: RemoteAdmin }> {
+    try {
+      const db = this.getDb();
+
+      const existingAdmin = await db
+        .select()
+        .from(remoteSchema.admins)
+        .where(eq(remoteSchema.admins.username, adminData.username))
+        .limit(1);
+
+      if (existingAdmin.length > 0) {
+        return { success: false, error: "Username already exists" };
+      }
+
+      const existingEmail = await db
+        .select()
+        .from(remoteSchema.admins)
+        .where(eq(remoteSchema.admins.email, adminData.email))
+        .limit(1);
+
+      if (existingEmail.length > 0) {
+        return { success: false, error: "Email already exists" };
+      }
+
+      const bcrypt = await import("bcryptjs");
+      const passwordHash = await bcrypt.hash(adminData.password, 10);
+
+      const newAdminData = {
+        email: adminData.email,
+        username: adminData.username,
+        passwordHash,
+        firstName: adminData.firstName,
+        lastName: adminData.lastName,
+        role: adminData.role as AdminRole,
+        status: "ACTIVE" as const,
+        phoneNumber: adminData.phoneNumber || null,
+        permissions: adminData.permissions || {
+          manage_users: adminData.role === "SUPER_ADMIN",
+          manage_questions: true,
+          manage_subjects: true,
+          view_analytics: true,
+          system_admin: adminData.role === "SUPER_ADMIN",
+          export_data: adminData.role !== "TEACHER",
+          import_data: adminData.role !== "TEACHER",
+          manage_backups: adminData.role === "SUPER_ADMIN",
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const [createdAdmin] = await db
+        .insert(remoteSchema.admins)
+        .values(newAdminData)
+        .returning();
+
+      return { success: true, admin: createdAdmin };
+    } catch (error) {
+      console.error("Create admin error:", error);
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Failed to create admin",
+      };
+    }
+  }
+
+  /**
+   * Delete quiz attempts for a specific user and subject
+   * This allows users to retake tests after admin intervention
+   */
+  async deleteQuizAttempts(
+    studentCode: string,
+    subjectCode: string
+  ): Promise<{ success: boolean; error?: string; deletedCount?: number }> {
+    try {
+      const db = this.getDb();
+
+      const user = await db
+        .select({ id: remoteSchema.users.id })
+        .from(remoteSchema.users)
+        .where(eq(remoteSchema.users.studentCode, studentCode))
+        .limit(1);
+
+      if (user.length === 0) {
+        return { success: false, error: "User not found" };
+      }
+
+      const subject = await db
+        .select({ id: remoteSchema.subjects.id })
+        .from(remoteSchema.subjects)
+        .where(eq(remoteSchema.subjects.subjectCode, subjectCode))
+        .limit(1);
+
+      if (subject.length === 0) {
+        return { success: false, error: "Subject not found" };
+      }
+
+      const userId = user[0].id;
+      const subjectId = subject[0].id;
+
+      const deleteResult = await db
+        .delete(remoteSchema.quizAttempts)
+        .where(
+          and(
+            eq(remoteSchema.quizAttempts.userId, userId),
+            eq(remoteSchema.quizAttempts.subjectId, subjectId)
+          )
+        )
+        .returning({ id: remoteSchema.quizAttempts.id });
+
+      return {
+        success: true,
+        deletedCount: deleteResult.length,
+        error:
+          deleteResult.length === 0
+            ? "No quiz attempts found to delete"
+            : undefined,
+      };
+    } catch (error) {
+      console.error("Delete quiz attempts error:", error);
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to delete quiz attempts",
+      };
+    }
   }
 }

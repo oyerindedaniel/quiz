@@ -1,4 +1,4 @@
-import { SyncError } from "@/lib/error";
+import { normalizeError, SyncError } from "@/lib/error";
 
 export type ConnectivityStatus = "online" | "offline" | "checking";
 
@@ -8,6 +8,15 @@ export interface NetworkInfo {
   effectiveType?: "slow-2g" | "2g" | "3g" | "4g" | "unknown";
   downlink?: number; // Effective bandwidth estimate in megabits per second
   rtt?: number; // Effective round-trip time in milliseconds
+}
+
+// NetworkInformation interface for better typing
+interface NetworkConnection extends EventTarget {
+  effectiveType?: "2g" | "3g" | "4g" | "slow-2g";
+  downlink?: number;
+  rtt?: number;
+  saveData?: boolean;
+  type?: string;
 }
 
 export class ConnectivityHandler {
@@ -35,10 +44,8 @@ export class ConnectivityHandler {
         "ConnectivityHandler: Initializing connectivity monitoring..."
       );
 
-      // Set up browser connectivity listeners
       this.setupBrowserListeners();
 
-      // Perform initial connectivity check
       this.checkConnectivity().then((isOnline) => {
         this.currentStatus = isOnline ? "online" : "offline";
         console.log(
@@ -53,7 +60,7 @@ export class ConnectivityHandler {
       throw new SyncError(
         "Failed to initialize connectivity handler",
         "connectivity_init",
-        error as Error
+        normalizeError(error)
       );
     }
   }
@@ -237,14 +244,11 @@ export class ConnectivityHandler {
     console.log("ConnectivityHandler: Cleanup completed");
   }
 
-  // Private Methods
-
   private setupBrowserListeners(): void {
     if (typeof window === "undefined") {
-      return; // Not in browser environment
+      return;
     }
 
-    // Listen for online/offline events
     window.addEventListener("online", this.handleOnline.bind(this));
     window.addEventListener("offline", this.handleOffline.bind(this));
 
@@ -257,7 +261,6 @@ export class ConnectivityHandler {
       );
     }
 
-    // Listen for visibility changes (to check connectivity when app becomes visible)
     document.addEventListener(
       "visibilitychange",
       this.handleVisibilityChange.bind(this)
@@ -331,7 +334,7 @@ export class ConnectivityHandler {
     }
   }
 
-  private getNetworkConnection(): any {
+  private getNetworkConnection(): NetworkConnection | null {
     // Try to get network connection info (experimental API)
     if (typeof navigator !== "undefined") {
       return (
@@ -344,7 +347,7 @@ export class ConnectivityHandler {
   }
 
   private getConnectionType(
-    connection: any
+    connection: NetworkConnection | null
   ): "wifi" | "cellular" | "ethernet" | "unknown" {
     if (!connection) {
       return "unknown";
@@ -354,10 +357,29 @@ export class ConnectivityHandler {
 
     if (type === "wifi") return "wifi";
     if (type === "ethernet") return "ethernet";
-    if (["cellular", "2g", "3g", "4g", "slow-2g"].includes(type))
+    if (
+      type &&
+      (type.includes("cellular") || type.includes("4g") || type.includes("3g"))
+    ) {
       return "cellular";
-
+    }
     return "unknown";
+  }
+
+  private analyzeNetworkQuality(): {
+    effectiveType: string;
+    downlink: number;
+    rtt: number;
+    connection: NetworkConnection | null;
+  } {
+    const connection = this.getNetworkConnection();
+
+    return {
+      effectiveType: connection?.effectiveType || "unknown",
+      downlink: connection?.downlink || 0,
+      rtt: connection?.rtt || 0,
+      connection,
+    };
   }
 
   private updateStatus(isOnline: boolean): void {
@@ -385,7 +407,6 @@ export class ConnectivityHandler {
 
   private handleOnline(): void {
     console.log("ConnectivityHandler: Browser online event received");
-    // Verify with actual network test
     this.checkConnectivity();
   }
 
@@ -396,7 +417,6 @@ export class ConnectivityHandler {
 
   private handleConnectionChange(): void {
     console.log("ConnectivityHandler: Network connection changed");
-    // Re-check connectivity when connection properties change
     this.checkConnectivity();
   }
 

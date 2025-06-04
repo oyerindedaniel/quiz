@@ -77,6 +77,22 @@ export class LocalDatabaseService {
     return users[0] || null;
   }
 
+  async findUserById(userId: string): Promise<User | null> {
+    const db = this.getDb();
+    const users = await db
+      .select()
+      .from(localSchema.users)
+      .where(
+        and(
+          eq(localSchema.users.id, userId),
+          eq(localSchema.users.isActive, true)
+        )
+      )
+      .limit(1);
+
+    return users[0] || null;
+  }
+
   async createUser(
     userData: Omit<NewUser, "createdAt" | "updatedAt">
   ): Promise<void> {
@@ -99,6 +115,22 @@ export class LocalDatabaseService {
       .where(
         and(
           eq(localSchema.subjects.subjectCode, subjectCode),
+          eq(localSchema.subjects.isActive, true)
+        )
+      )
+      .limit(1);
+
+    return subjects[0] || null;
+  }
+
+  async findSubjectById(subjectId: string): Promise<Subject | null> {
+    const db = this.getDb();
+    const subjects = await db
+      .select()
+      .from(localSchema.subjects)
+      .where(
+        and(
+          eq(localSchema.subjects.id, subjectId),
           eq(localSchema.subjects.isActive, true)
         )
       )
@@ -218,6 +250,22 @@ export class LocalDatabaseService {
       .where(eq(localSchema.quizAttempts.id, attemptId));
   }
 
+  async updateElapsedTime(
+    attemptId: string,
+    elapsedTime: number
+  ): Promise<void> {
+    const db = this.getDb();
+
+    await db
+      .update(localSchema.quizAttempts)
+      .set({
+        elapsedTime,
+        lastActiveAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(localSchema.quizAttempts.id, attemptId));
+  }
+
   // Question operations
   async getQuestionsForSubject(subjectId: string): Promise<Question[]> {
     const db = this.getDb();
@@ -244,6 +292,93 @@ export class LocalDatabaseService {
       createdAt: now,
       updatedAt: now,
     });
+  }
+
+  /**
+   * Bulk create questions
+   */
+  async bulkCreateQuestions(
+    questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
+  ): Promise<{ success: boolean; created: number; error?: string }> {
+    if (questions.length === 0) {
+      return { success: true, created: 0 };
+    }
+
+    const db = this.getDb();
+    const now = new Date().toISOString();
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const questionsWithTimestamps = questions.map((questionData) => ({
+          ...questionData,
+          createdAt: now,
+          updatedAt: now,
+        }));
+
+        await tx.insert(localSchema.questions).values(questionsWithTimestamps);
+
+        return { created: questions.length };
+      });
+
+      console.log(`Bulk created ${result.created} questions successfully`);
+
+      return {
+        success: true,
+        created: result.created,
+      };
+    } catch (error) {
+      console.error("Bulk question creation error:", error);
+      return {
+        success: false,
+        created: 0,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Execute a function within a transaction
+   */
+  async transaction<T>(
+    callback: (tx: BetterSQLite3Database<typeof localSchema>) => Promise<T>
+  ): Promise<T> {
+    const db = this.getDb();
+    return await db.transaction(callback);
+  }
+
+  async findQuestionBySubjectCodeAndOrder(
+    subjectCode: string,
+    questionOrder: number
+  ): Promise<Question | null> {
+    const db = this.getDb();
+    const questions = await db
+      .select()
+      .from(localSchema.questions)
+      .where(
+        and(
+          eq(localSchema.questions.subjectCode, subjectCode),
+          eq(localSchema.questions.questionOrder, questionOrder),
+          eq(localSchema.questions.isActive, true)
+        )
+      )
+      .limit(1);
+
+    return questions[0] || null;
+  }
+
+  async updateQuestion(
+    questionId: string,
+    questionData: Partial<Omit<NewQuestion, "id" | "createdAt">>
+  ): Promise<void> {
+    const db = this.getDb();
+
+    await db
+      .update(localSchema.questions)
+      .set({
+        ...questionData,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(localSchema.questions.id, questionId));
   }
 
   async checkIntegrity(): Promise<boolean> {

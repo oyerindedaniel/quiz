@@ -3,7 +3,7 @@ import { generateUUID, formatDate } from "../utils/index";
 
 export class ErrorManager {
   private static errors: ErrorLogEntry[] = [];
-  private static maxErrors = 1000; // Keep last 1000 errors in memory
+  private static maxErrors = 1000;
 
   /**
    * Log an error
@@ -23,15 +23,12 @@ export class ErrorManager {
       stack: error?.stack,
     };
 
-    // Add to memory store
     this.errors.unshift(errorEntry);
 
-    // Keep only maxErrors entries
     if (this.errors.length > this.maxErrors) {
       this.errors = this.errors.slice(0, this.maxErrors);
     }
 
-    // Log to console based on type
     this.logToConsole(errorEntry);
 
     return errorEntry;
@@ -130,7 +127,6 @@ export class DatabaseError extends Error {
     this.context = context;
     this.originalError = originalError;
 
-    // Log the error
     ErrorManager.logError("database", message, context, originalError || this);
   }
 }
@@ -149,7 +145,6 @@ export class SyncError extends Error {
     this.context = context;
     this.originalError = originalError;
 
-    // Log the error
     ErrorManager.logError("sync", message, context, originalError || this);
   }
 }
@@ -283,4 +278,14 @@ export function handleNetworkError<T extends unknown[], R>(
   context: string
 ) {
   return handleAsyncError(fn, context, "network");
+}
+
+/**
+ * Normalize error
+ */
+export function normalizeError(error: unknown): Error {
+  if (error instanceof Error) {
+    return error;
+  }
+  return new Error(String(error));
 }

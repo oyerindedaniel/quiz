@@ -40,9 +40,10 @@ export class NeonManager {
 
       this.pool = new Pool({
         connectionString: this.connectionString,
-        max: 10,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 2000,
+        max: 3,
+        min: 1,
+        idleTimeoutMillis: 10000,
+        connectionTimeoutMillis: 5000,
         ssl: {
           rejectUnauthorized: false,
         },

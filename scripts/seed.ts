@@ -19,45 +19,55 @@ async function main() {
     await sqliteManager.initialize();
     console.log("✅ Database initialized\n");
 
-    const seedingService = new UserSeedingService();
+    console.log("📚 Creating subjects...");
+    const userSeedingService = new UserSeedingService();
+    const subjectResults = await userSeedingService.createSubjectsData();
 
-    console.log("👥 Creating student and subject data...");
-    const results = await seedingService.createProductionData();
+    console.log("\n📊 Subject Seeding Results:");
+    console.log("============================");
+    console.log(`   ✅ Created: ${subjectResults.created}`);
+    console.log(`   ⏭️  Existing: ${subjectResults.existing}`);
+    console.log(`   ❌ Errors:  ${subjectResults.errors.length}`);
 
-    console.log("\n📊 Seeding Results:");
-    console.log("==================");
-
-    console.log("\n👥 Students:");
-    console.log(`   ✅ Created: ${results.users.created}`);
-    console.log(`   ⏭️  Skipped: ${results.users.skipped}`);
-    console.log(`   ❌ Errors:  ${results.users.errors.length}`);
-
-    if (results.users.errors.length > 0) {
+    if (subjectResults.errors.length > 0) {
       console.log("\n   Error Details:");
-      results.users.errors.forEach((error) => console.log(`   • ${error}`));
+      subjectResults.errors.forEach((error) => console.log(`   • ${error}`));
     }
 
-    console.log("\n📚 Subjects:");
-    console.log(`   ✅ Created: ${results.subjects.created}`);
-    console.log(`   ⏭️  Skipped: ${results.subjects.skipped}`);
-    console.log(`   ❌ Errors:  ${results.subjects.errors.length}`);
+    // Seed users
+    console.log("\n👥 Creating student data...");
+    const userResults = await userSeedingService.createUserData();
 
-    if (results.subjects.errors.length > 0) {
+    console.log("\n📊 User Seeding Results:");
+    console.log("=========================");
+    console.log(`   ✅ Created: ${userResults.users.created}`);
+    console.log(`   ⏭️  Skipped: ${userResults.users.skipped}`);
+    console.log(`   ❌ Errors:  ${userResults.users.errors.length}`);
+
+    if (userResults.users.errors.length > 0) {
       console.log("\n   Error Details:");
-      results.subjects.errors.forEach((error) => console.log(`   • ${error}`));
+      userResults.users.errors.forEach((error) => console.log(`   • ${error}`));
     }
 
     console.log("\n🎉 Seeding completed successfully!");
 
-    if (results.users.created > 0) {
+    if (userResults.users.created > 0 || subjectResults.created > 0) {
       console.log("\n📋 Sample Student Codes Generated:");
+      console.log("   BASIC5_STU_001, BASIC5_STU_002, BASIC5_STU_003...");
       console.log("   SS2_STU_001, SS2_STU_002, SS2_STU_003, SS2_STU_004");
       console.log(
         "   JSS3_STU_001, JSS3_STU_002, JSS3_STU_003, JSS3_STU_004, JSS3_STU_005, JSS3_STU_006, JSS3_STU_007"
       );
       console.log("\n📋 Subject Codes Generated:");
-      console.log("   SS2_ENG, SS2_MTH, SS2_SST, SS2_BSC, SS2_YOR");
-      console.log("   JSS3_ENG, JSS3_MTH, JSS3_SST, JSS3_BSC, JSS3_YOR");
+      console.log(
+        "   BASIC5_MATH, BASIC5_ENG, BASIC5_BSC, BASIC5_SST, BASIC5_YOR"
+      );
+      console.log(
+        "   SS2_MATH, SS2_ENG, SS2_BIO, SS2_CHEM, SS2_PHY, SS2_GEO..."
+      );
+      console.log(
+        "   JSS3_MATH, JSS3_ENG, JSS3_BSC, JSS3_SST, JSS3_YOR, JSS3_TECH..."
+      );
     }
   } catch (error) {
     if (error instanceof Error) {
