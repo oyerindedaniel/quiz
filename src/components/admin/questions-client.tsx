@@ -26,7 +26,6 @@ import {
   Search,
   RefreshCw,
   HelpCircle,
-  BookOpen,
   TrendingUp,
   AlertCircle,
   Target,
@@ -48,7 +47,6 @@ interface QuestionWithStats {
 }
 
 export function QuestionsClient() {
-  // Use the admin data hook
   const {
     data: questions,
     isLoading,
@@ -59,7 +57,6 @@ export function QuestionsClient() {
     refreshInterval: 30000,
   });
 
-  // Use the filtered data hook
   const {
     filteredData: filteredQuestions,
     searchTerm,

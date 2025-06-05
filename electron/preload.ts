@@ -7,7 +7,7 @@ import type {
   SyncOperationType,
   AdminSessionData,
   CreateAdminData,
-} from "../src/types/app";
+} from "../src/types/app.js";
 
 const electronAPI = {
   // Database operations (raw SQL)
@@ -135,6 +135,15 @@ const electronAPI = {
         studentCode,
         subjectCode
       ),
+    getStudentCredentials: () =>
+      ipcRenderer.invoke("admin:get-student-credentials"),
+    // User regulation methods
+    toggleAllUsersActive: (isActive: boolean) =>
+      ipcRenderer.invoke("admin:toggle-all-users-active", isActive),
+    toggleUserActive: (studentCode: string, isActive: boolean) =>
+      ipcRenderer.invoke("admin:toggle-user-active", studentCode, isActive),
+    changeUserPin: (studentCode: string, newPin: string) =>
+      ipcRenderer.invoke("admin:change-user-pin", studentCode, newPin),
   },
 
   // Remote operations (secure)

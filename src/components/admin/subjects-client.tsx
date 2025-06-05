@@ -47,7 +47,6 @@ interface SubjectWithStats {
 }
 
 export function SubjectsClient() {
-  // Use the admin data hook
   const {
     data: subjects,
     isLoading,
@@ -58,7 +57,6 @@ export function SubjectsClient() {
     refreshInterval: 30000,
   });
 
-  // Use the filtered data hook
   const {
     filteredData: filteredSubjects,
     searchTerm,

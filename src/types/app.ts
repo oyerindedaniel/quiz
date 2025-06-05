@@ -46,6 +46,53 @@ import type {
 } from "@/lib/database/remote-schema";
 import { SyncTrigger } from "@/lib/sync/sync-engine";
 
+// Generic Result Types - Base patterns for common result structures
+export interface BaseResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface ResultWithData<T> extends BaseResult {
+  data?: T;
+}
+
+export interface ResultWithCount extends BaseResult {
+  created?: number;
+  updated?: number;
+  deleted?: number;
+  updatedCount?: number;
+  deletedCount?: number;
+}
+
+export interface CreateResult extends BaseResult {
+  created: number;
+}
+
+export interface UpdateResult extends BaseResult {
+  updated?: boolean;
+}
+
+export interface DeleteResult extends BaseResult {
+  deletedCount?: number;
+}
+
+export interface ToggleResult extends BaseResult {
+  updatedCount?: number;
+}
+
+export interface BulkOperationResult extends BaseResult {
+  created: number;
+  updated?: number;
+  failed?: number;
+}
+
+export type UserToggleResult = ToggleResult;
+export type UserUpdateResult = UpdateResult;
+export type UserPinChangeResult = UpdateResult;
+export type QuestionCreationResult = CreateResult;
+export type QuizDeletionResult = DeleteResult;
+export type BackupResult = BaseResult;
+
 // Input/Creation Types for seeding and imports
 export interface CreateUserData {
   id: string;
@@ -183,6 +230,7 @@ export interface ImportResult {
     regular: number;
     passages: number;
     headers: number;
+    images: number;
   };
 }
 
@@ -269,18 +317,11 @@ export interface RepairResult {
   error?: string;
 }
 
-export interface BackupResult {
-  success: boolean;
-  backupId?: string;
-  size?: number;
-  error?: string;
-}
-
 // Electron API Types
 export interface DatabaseAPI {
   execute: (sql: string, params: unknown[]) => Promise<unknown[]>;
   run: (sql: string, params: unknown[]) => Promise<unknown>;
-  backup: (backupPath: string) => Promise<{ success: boolean; error?: string }>;
+  backup: (backupPath: string) => Promise<BackupResult>;
   checkIntegrity: () => Promise<boolean>;
 }
 
@@ -308,15 +349,11 @@ export interface QuizAPI {
   updateElapsedTime: (attemptId: string, elapsedTime: number) => Promise<void>;
   bulkCreateQuestions: (
     questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
-  ) => Promise<{ success: boolean; created: number; error?: string }>;
+  ) => Promise<QuestionCreationResult>;
   deleteQuizAttempts: (
     studentCode: string,
     subjectCode: string
-  ) => Promise<{
-    success: boolean;
-    error?: string;
-    deletedCount?: number;
-  }>;
+  ) => Promise<QuizDeletionResult>;
 }
 
 // User API Types
@@ -433,18 +470,25 @@ export interface AdminAPI {
   deleteQuizAttempts: (
     studentCode: string,
     subjectCode: string
-  ) => Promise<{
-    success: boolean;
-    error?: string;
-    deletedCount?: number;
-  }>;
+  ) => Promise<QuizDeletionResult>;
+  getStudentCredentials: () => Promise<Array<UserSeedData>>;
+  // User regulation methods
+  toggleAllUsersActive: (isActive: boolean) => Promise<UserToggleResult>;
+  toggleUserActive: (
+    studentCode: string,
+    isActive: boolean
+  ) => Promise<UserUpdateResult>;
+  changeUserPin: (
+    studentCode: string,
+    newPin: string
+  ) => Promise<UserUpdateResult>;
 }
 
 // Remote API Types
 export interface RemoteAPI {
   bulkCreateQuestions: (
     questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
-  ) => Promise<{ success: boolean; created: number; error?: string }>;
+  ) => Promise<QuestionCreationResult>;
 }
 
 export interface ElectronAPI {
@@ -475,16 +519,23 @@ export interface CSVRow {
   "Option B": string;
   "Option C": string;
   "Option D": string;
+  "Option E"?: string; // Optional for 5-option questions
   "Correct Answer": string;
   "Question Order": string;
 }
 
+export type QuestionType = "question" | "passage" | "header" | "image";
+
+export type ImagePosition = "up" | "down";
+
 export interface QuestionItem {
   question: Question;
-  type: "question" | "passage" | "header";
+  type: QuestionType;
   content: string;
   options?: string[];
   answer?: string;
+  imageUrl?: string;
+  imagePosition?: ImagePosition;
 }
 
 export interface ProcessedQuizData {
@@ -545,6 +596,8 @@ export interface UserWithAttempts {
   className: string;
   gender: string;
   pin: string;
+  isActive: boolean;
+  lastLogin: string | null;
   createdAt: string;
   updatedAt: string;
   quizAttempts: Array<{
@@ -612,9 +665,7 @@ export interface CreateAdminData {
   permissions?: Record<string, boolean>;
 }
 
-export interface AdminCreationResult {
-  success: boolean;
-  error?: string;
+export interface AdminCreationResult extends ResultWithData<RemoteAdmin> {
   admin?: RemoteAdmin;
 }
 
@@ -659,32 +710,29 @@ export type SubjectWithQuestionsAndAttempts = {
   }>;
 };
 
+// Generic types for query patterns
+export interface QueryWithClause<T, H = unknown> {
+  where?: (item: T, helpers: H) => boolean;
+  columns?: Record<string, boolean>;
+}
+
+export interface QueryWithRelations<T, H = unknown> {
+  with?: {
+    [K: string]:
+      | boolean
+      | (QueryWithClause<T, H> & {
+          with?: Record<string, boolean>;
+        });
+  };
+}
+
 export interface QueryWithOptions {
-  users: {
-    with?: {
-      quizAttempts?:
-        | boolean
-        | {
-            where?: (attempts: any, helpers: any) => any;
-            with?: {
-              subject?: boolean;
-            };
-          };
-    };
-  };
-  subjects: {
-    with?: {
-      questions?:
-        | boolean
-        | {
-            where?: (questions: any, helpers: any) => any;
-          };
-      quizAttempts?:
-        | boolean
-        | {
-            where?: (attempts: any, helpers: any) => any;
-            columns?: Record<string, boolean>;
-          };
-    };
-  };
+  users: QueryWithRelations<QuizAttempt>;
+  subjects: QueryWithRelations<Question | QuizAttempt>;
+}
+
+export interface ConnectivityStatus {
+  isOnline: boolean;
+  isChecking: boolean;
+  lastChecked: Date | null;
 }

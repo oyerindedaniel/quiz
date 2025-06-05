@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LocalDatabaseService = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
@@ -157,13 +190,15 @@ class LocalDatabaseService {
             ? JSON.parse(attempts[0].answers)
             : {};
         currentAnswers[questionId] = answer;
-        await db
+        const updatedAttempt = await db
             .update(local_schema_js_1.localSchema.quizAttempts)
             .set({
             answers: JSON.stringify(currentAnswers),
             updatedAt: new Date().toISOString(),
         })
-            .where((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.quizAttempts.id, attemptId));
+            .where((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.quizAttempts.id, attemptId))
+            .returning();
+        console.log({ updatedAttempt });
     }
     async submitQuizAttempt(attemptId, score, sessionDuration) {
         const db = this.getDb();
@@ -206,6 +241,25 @@ class LocalDatabaseService {
             createdAt: now,
             updatedAt: now,
         });
+    }
+    /**
+     * Update subject question count
+     */
+    async updateSubjectQuestionCount(subjectCode) {
+        const db = this.getDb();
+        const questionCount = await db
+            .select({ count: (0, drizzle_orm_1.sql) `count(*)` })
+            .from(local_schema_js_1.localSchema.questions)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.subjectCode, subjectCode), (0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.isActive, true), (0, drizzle_orm_1.sql) `${local_schema_js_1.localSchema.questions.text} NOT LIKE '[PASSAGE]%'`, (0, drizzle_orm_1.sql) `${local_schema_js_1.localSchema.questions.text} NOT LIKE '[HEADER]%'`));
+        const count = questionCount[0]?.count || 0;
+        await db
+            .update(local_schema_js_1.localSchema.subjects)
+            .set({
+            totalQuestions: count,
+            updatedAt: new Date().toISOString(),
+        })
+            .where((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.subjects.subjectCode, subjectCode));
+        console.log(`Updated question count for subject ${subjectCode}: ${count} answerable questions`);
     }
     /**
      * Bulk create questions
@@ -302,20 +356,6 @@ class LocalDatabaseService {
         return result[0]?.count || 0;
     }
     /**
-     * Update total questions count for a subject
-     */
-    async updateSubjectQuestionCount(subjectCode) {
-        const db = this.getDb();
-        const count = await this.countQuestionsBySubjectCode(subjectCode);
-        await db
-            .update(local_schema_js_1.localSchema.subjects)
-            .set({
-            totalQuestions: count,
-            updatedAt: new Date().toISOString(),
-        })
-            .where((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.subjects.subjectCode, subjectCode));
-    }
-    /**
      * Delete quiz attempts for a specific user and subject
      * This allows users to retake tests after admin intervention
      */
@@ -384,6 +424,113 @@ class LocalDatabaseService {
     async checkDatabaseIntegrity() {
         const sqliteManager = this.getSqliteManager();
         return sqliteManager.checkIntegrity();
+    }
+    /**
+     * User regulation methods for admin control
+     */
+    /**
+     * Toggle active state for all users
+     */
+    async toggleAllUsersActive(isActive) {
+        try {
+            const db = this.getDb();
+            const now = new Date().toISOString();
+            const result = await db
+                .update(local_schema_js_1.localSchema.users)
+                .set({
+                isActive,
+                updatedAt: now,
+            })
+                .returning({ id: local_schema_js_1.localSchema.users.id });
+            return {
+                success: true,
+                updatedCount: result.length,
+            };
+        }
+        catch (error) {
+            console.error("Error toggling all users active state:", error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+            };
+        }
+    }
+    /**
+     * Toggle active state for a specific user
+     */
+    async toggleUserActive(studentCode, isActive) {
+        try {
+            const db = this.getDb();
+            const now = new Date().toISOString();
+            const result = await db
+                .update(local_schema_js_1.localSchema.users)
+                .set({
+                isActive,
+                updatedAt: now,
+            })
+                .where((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.users.studentCode, studentCode))
+                .returning({ id: local_schema_js_1.localSchema.users.id });
+            return {
+                success: true,
+                updated: result.length > 0,
+            };
+        }
+        catch (error) {
+            console.error("Error toggling user active state:", error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+            };
+        }
+    }
+    /**
+     * Change user PIN
+     */
+    async changeUserPin(studentCode, newPin) {
+        try {
+            const db = this.getDb();
+            const now = new Date().toISOString();
+            const bcrypt = await Promise.resolve().then(() => __importStar(require("bcryptjs")));
+            const hashedPin = await bcrypt.hash(newPin, 10);
+            const result = await db
+                .update(local_schema_js_1.localSchema.users)
+                .set({
+                passwordHash: hashedPin,
+                updatedAt: now,
+            })
+                .where((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.users.studentCode, studentCode))
+                .returning({ id: local_schema_js_1.localSchema.users.id });
+            return {
+                success: true,
+                updated: result.length > 0,
+            };
+        }
+        catch (error) {
+            console.error("Error changing user PIN:", error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+            };
+        }
+    }
+    /**
+     * Update user last login timestamp
+     */
+    async updateUserLastLogin(studentCode) {
+        try {
+            const db = this.getDb();
+            const now = new Date().toISOString();
+            await db
+                .update(local_schema_js_1.localSchema.users)
+                .set({
+                lastLogin: now,
+                updatedAt: now,
+            })
+                .where((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.users.studentCode, studentCode));
+        }
+        catch (error) {
+            console.error("Error updating user last login:", error);
+        }
     }
     /**
      * Cleanup database connections

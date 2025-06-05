@@ -12,6 +12,7 @@ export const usersTable = sqliteTable("users", {
   updatedAt: text("updated_at").notNull(),
   lastSynced: text("last_synced"),
   isActive: integer("is_active", { mode: "boolean" }).default(true),
+  lastLogin: text("last_login"),
 });
 
 export const subjectsTable = sqliteTable("subjects", {

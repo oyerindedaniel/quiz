@@ -82,14 +82,39 @@ SS2_ENG,Don't argue with your mother it is a sign of _____,disrespect,irrespect,
 SS2_ENG,Crude oil is sold to other countries in containers called _____,barrels,bottles,drums,tanks,A,12
 ```
 
-### 3. Navigation Grouping Logic
+### 3. Image Blocks
+
+For visual content that pairs with the next question:
+
+**Format**: Start Question Text with `[IMAGE]`
+
+```csv
+Subject Code,Question Text,Option A,Option B,Option C,Option D,Correct Answer,Question Order
+SS2_MATH,"[IMAGE] position:up
+https://example.com/images/math-diagram.png",,,,,,
+SS2_MATH,Based on the diagram above what is the value of angle X?,45°,60°,90°,120°,C,5
+SS2_SCI,"[IMAGE] position:down
+https://example.com/images/cell-structure.jpg",,,,,,
+SS2_SCI,The structure shown below is found in which type of cell?,Plant cells only,Animal cells only,Both plant and animal cells,Neither plant nor animal cells,A,8
+```
+
+**Image Positioning:**
+
+- **position:up** - Image displays above the question text
+- **position:down** - Image displays below the question text
+- Image URL should be a valid external link (HTTP/HTTPS)
+- Images are paired with the immediately following question
+- Both image and question appear on the same navigation page
+
+### 4. Navigation Grouping Logic
 
 **How Questions Are Grouped in UI:**
 
 - **PASSAGE**: Standalone navigation page (has enough content)
 - **HEADER + Next Question**: Paired together on same navigation page
+- **IMAGE + Next Question**: Paired together on same navigation page (image positioned above/below)
 - **Regular Questions**: Individual navigation pages
-- **Questions After Header**: Individual navigation (only first question after header is paired)
+- **Questions After Header/Image**: Individual navigation (only first question after header/image is paired)
 
 **Example Navigation Flow:**
 
@@ -98,7 +123,7 @@ Page 1: [PASSAGE] + passage content only
 Page 2: Question 1 about passage
 Page 3: Question 2 about passage
 Page 4: [HEADER] + Question 11 together
-Page 5: Question 12 alone
+Page 5: [IMAGE] + Question 12 together (image positioned as specified)
 Page 6: Question 13 alone
 ```
 
@@ -116,7 +141,7 @@ SS2_ENG,"What does ""Hello, **world**!"" demonstrate?",A greeting,A program,A qu
 
 ### Multi-line Content
 
-For passages or long questions with line breaks:
+For passages, images, or long questions with line breaks:
 
 ```csv
 Subject Code,Question Text,Option A,Option B,Option C,Option D,Correct Answer,Question Order
@@ -124,6 +149,8 @@ SS2_ENG,"[PASSAGE] PASSAGE 1
 Read the following passage carefully...
 
 There was once a terrible **famine** in the land...",,,,,,
+SS2_MATH,"[IMAGE] position:up
+https://example.com/images/geometry-problem.png",,,,,,
 ```
 
 ## Data Rules
@@ -139,6 +166,7 @@ There was once a terrible **famine** in the land...",,,,,,
 - **Regular Questions**: Max 1000 characters, cannot be empty
 - **[PASSAGE] Content**: Max 5000 characters for long passages
 - **[HEADER] Content**: Max 500 characters for section headers
+- **[IMAGE] Content**: Must include `position:up` or `position:down` and valid image URL
 - **Underline Support**: Use `**text**` for underlined words
 
 **Options A-D**
@@ -146,6 +174,7 @@ There was once a terrible **famine** in the land...",,,,,,
 - **Regular Questions**: Max 200 characters each, all required
 - **[PASSAGE] Rows**: Leave empty (all 4 columns)
 - **[HEADER] Rows**: Leave empty (all 4 columns)
+- **[IMAGE] Rows**: Leave empty (all 4 columns)
 - **Underline Support**: Use `**text**` for underlined words in options
 
 **Correct Answer**
@@ -153,29 +182,27 @@ There was once a terrible **famine** in the land...",,,,,,
 - **Regular Questions**: Must be exactly `A`, `B`, `C`, or `D`
 - **[PASSAGE] Rows**: Leave empty
 - **[HEADER] Rows**: Leave empty
+- **[IMAGE] Rows**: Leave empty
 
 **Question Order**
 
 - **Regular Questions**: Optional positive number for custom ordering
 - **[PASSAGE] Rows**: **Must be empty** (not a question)
 - **[HEADER] Rows**: **Must be empty** (not a question)
+- **[IMAGE] Rows**: **Must be empty** (not a question)
 
-## Complete English Example with Underlines
+## Complete Example with Images
 
 ```csv
 Subject Code,Question Text,Option A,Option B,Option C,Option D,Correct Answer,Question Order
-SS2_ENG,[HEADER] **ENGLISH LANGUAGE** MOCK EXAMINATION,,,,,,
-SS2_ENG,"[PASSAGE] PASSAGE 1
-Read the following passage carefully and answer the questions that follow
-
-There was once a terrible **famine** in the land of the animals. Food and money were **scarce**. Hunger made all the creatures very weak...",,,,,,
-SS2_ENG,By giving the advice he gave the elephant was a _____ animal.,cunning,great,smart,wise,E,1
-SS2_ENG,The word **'famine'** as used in the passage means _____,abundance,scarcity,plenty,surplus,B,2
-SS2_ENG,[HEADER] Choose the expression that is similar in meaning to each **underlined** word,,,,,,
-SS2_ENG,The nation is **confronted** with several challenges,mixed,stopped,put,faced,D,10
-SS2_ENG,I **ran into** my old friend in Lagos,met,called,told,moved,A,11
-SS2_ENG,[HEADER] Choose the word most **opposite** in meaning to the underlined word,,,,,,
-SS2_ENG,The news made him feel **glad**,sad,lonely,happy,sick,A,15
+SS2_MATH,[HEADER] **MATHEMATICS** MOCK EXAMINATION,,,,,,
+SS2_MATH,"[IMAGE] position:up
+https://example.com/images/triangle-abc.png",,,,,,
+SS2_MATH,In triangle ABC shown above what is the measure of angle C?,30°,45°,60°,90°,C,1
+SS2_SCI,"[IMAGE] position:down
+https://example.com/images/photosynthesis-diagram.jpg",,,,,,
+SS2_SCI,The process illustrated below converts light energy into which form?,Chemical energy,Thermal energy,Mechanical energy,Electrical energy,A,5
+SS2_ENG,The word **'brilliant'** means _____,dull,bright,dark,heavy,B,10
 ```
 
 ## UI Display Logic
@@ -190,37 +217,49 @@ SS2_ENG,The news made him feel **glad**,sad,lonely,happy,sick,A,15
 
 1. **PASSAGE Only**: Standalone page with passage content (underlines preserved)
 2. **HEADER + Question**: Bold header with immediate next question on same page
-3. **Regular Questions**: Individual pages
+3. **IMAGE + Question**: Image positioned above/below question on same page
+4. **Regular Questions**: Individual pages
 
 **Display Formatting:**
 
 - **[PASSAGE] Content**: Regular text, larger font, indented paragraphs, underlines preserved
 - **[HEADER] Content**: **Bold text**, prominent styling, appears above paired question
+- **[IMAGE] Content**: Responsive image display with proper loading states, positioned as specified
 - **Regular Questions**: Standard question formatting with underline support
 - **Underlined Words**: Rendered with consistent underline styling
+
+**Image Display:**
+
+- Images are responsive and maintain aspect ratio
+- Loading states with skeleton placeholders
+- Error handling for broken/invalid URLs
+- Proper accessibility with alt text support
+- Position-aware rendering (above or below question)
 
 ## Import Process
 
 1. Save questions as CSV file with proper encoding (UTF-8)
 2. Use `**text**` syntax for words you want underlined in the UI
-3. Leave Question Order empty for `[PASSAGE]` and `[HEADER]` rows
-4. Run import command: `npm run import:csv`
-5. App validates file structure and special delimiters
-6. Creates missing subjects automatically
-7. Preserves underline markers for UI rendering
-8. Groups questions based on navigation logic (passages standalone, headers paired)
-9. Imports valid questions with grouping metadata
-10. Shows success/error report
-11. Syncs to remote database when online
+3. Use `[IMAGE] position:up|down` followed by image URL for visual content
+4. Leave Question Order empty for `[PASSAGE]`, `[HEADER]`, and `[IMAGE]` rows
+5. Run import command: `npm run import:csv`
+6. App validates file structure and special delimiters
+7. Creates missing subjects automatically
+8. Preserves underline markers and image positioning for UI rendering
+9. Groups questions based on navigation logic (passages standalone, headers/images paired)
+10. Imports valid questions with grouping metadata
+11. Shows success/error report
+12. Syncs to remote database when online
 
 ## CSV Best Practices
 
 - Use proper CSV editors (Excel, Google Sheets, LibreOffice Calc)
 - Save with UTF-8 encoding to preserve special characters
 - Use `**text**` sparingly for maximum visual impact
-- Test underline rendering with small files first
+- Ensure image URLs are accessible and use HTTPS when possible
+- Test image loading and positioning with small files first
 - Keep backups of original CSV files
 - Validate data before bulk import
-- Ensure Question Order is empty for PASSAGE and HEADER rows
+- Ensure Question Order is empty for PASSAGE, HEADER, and IMAGE rows
 
-This approach ensures headers are always paired with a question, while passages get their own navigation space, and underlined text provides visual emphasis for key terms and concepts.
+This approach ensures headers and images are always paired with a question, while passages get their own navigation space, and underlined text provides visual emphasis for key terms and concepts.

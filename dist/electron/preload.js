@@ -76,6 +76,11 @@ const electronAPI = {
         getAnalyticsData: () => electron_1.ipcRenderer.invoke("admin:get-analytics-data"),
         createAdmin: (adminData) => electron_1.ipcRenderer.invoke("admin:create-admin", adminData),
         deleteQuizAttempts: (studentCode, subjectCode) => electron_1.ipcRenderer.invoke("admin:delete-quiz-attempts", studentCode, subjectCode),
+        getStudentCredentials: () => electron_1.ipcRenderer.invoke("admin:get-student-credentials"),
+        // User regulation methods
+        toggleAllUsersActive: (isActive) => electron_1.ipcRenderer.invoke("admin:toggle-all-users-active", isActive),
+        toggleUserActive: (studentCode, isActive) => electron_1.ipcRenderer.invoke("admin:toggle-user-active", studentCode, isActive),
+        changeUserPin: (studentCode, newPin) => electron_1.ipcRenderer.invoke("admin:change-user-pin", studentCode, newPin),
     },
     // Remote operations (secure)
     remote: {

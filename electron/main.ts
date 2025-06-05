@@ -90,7 +90,7 @@ class QuizApp {
   }
 
   private async init(): Promise<void> {
-    // Register custom protocol before app ready
+    // Register custom protocol
     protocol.registerSchemesAsPrivileged([
       {
         scheme: "app",
@@ -149,7 +149,7 @@ class QuizApp {
           }
         }
 
-        // Determine content type based on file extension
+        // Determine content type
         const ext = filePath.split(".").pop()?.toLowerCase();
         let contentType = "text/plain";
 
@@ -208,8 +208,6 @@ class QuizApp {
         url: cookieUrl,
         name: "admin_session",
       });
-
-      console.log({ session: sessionCookie, mainSession });
 
       if (sessionCookie.length === 0) {
         return { valid: false };
@@ -488,15 +486,29 @@ class QuizApp {
       "quiz:delete-quiz-attempts",
       async (_, studentCode: string, subjectCode: string) => {
         try {
-          return await this.dbService.deleteLocalQuizAttempts(
+          const authCheck = await this.validateAdminAuth();
+          if (!authCheck.valid) {
+            throw new Error("Unauthorized: Admin authentication required");
+          }
+
+          return await this.dbService.deleteQuizAttempts(
             studentCode,
             subjectCode
           );
         } catch (error) {
-          console.error("Delete local quiz attempts error:", error);
+          console.error("Delete quiz attempts error:", error);
+          if (
+            error instanceof Error &&
+            error.message.includes("Unauthorized")
+          ) {
+            throw error;
+          }
           return {
             success: false,
-            error: error instanceof Error ? error.message : "Unknown error",
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to delete quiz attempts",
           };
         }
       }
@@ -928,6 +940,23 @@ class QuizApp {
       }
     });
 
+    ipcMain.handle("admin:get-student-credentials", async () => {
+      try {
+        const authCheck = await this.validateAdminAuth();
+        if (!authCheck.valid) {
+          throw new Error("Unauthorized: Admin authentication required");
+        }
+
+        return await this.dbService.getStudentCredentials();
+      } catch (error) {
+        console.error("Get student credentials error:", error);
+        if (error instanceof Error && error.message.includes("Unauthorized")) {
+          throw error;
+        }
+        return [];
+      }
+    });
+
     ipcMain.handle(
       "admin:delete-quiz-attempts",
       async (_, studentCode: string, subjectCode: string) => {
@@ -936,7 +965,6 @@ class QuizApp {
           if (!authCheck.valid) {
             throw new Error("Unauthorized: Admin authentication required");
           }
-
           return await this.dbService.deleteQuizAttempts(
             studentCode,
             subjectCode
@@ -960,16 +988,108 @@ class QuizApp {
       }
     );
 
+    // User regulation handlers
+    ipcMain.handle(
+      "admin:toggle-all-users-active",
+      async (_, isActive: boolean) => {
+        try {
+          const authCheck = await this.validateAdminAuth();
+          if (!authCheck.valid) {
+            throw new Error("Unauthorized: Admin authentication required");
+          }
+          return await this.dbService.toggleAllUsersActive(isActive);
+        } catch (error) {
+          console.error("Toggle all users active error:", error);
+          if (
+            error instanceof Error &&
+            error.message.includes("Unauthorized")
+          ) {
+            throw error;
+          }
+          return {
+            success: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to toggle all users active state",
+          };
+        }
+      }
+    );
+
+    ipcMain.handle(
+      "admin:toggle-user-active",
+      async (_, studentCode: string, isActive: boolean) => {
+        try {
+          const authCheck = await this.validateAdminAuth();
+          if (!authCheck.valid) {
+            throw new Error("Unauthorized: Admin authentication required");
+          }
+          return await this.dbService.toggleUserActive(studentCode, isActive);
+        } catch (error) {
+          console.error("Toggle user active error:", error);
+          if (
+            error instanceof Error &&
+            error.message.includes("Unauthorized")
+          ) {
+            throw error;
+          }
+          return {
+            success: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to toggle user active state",
+          };
+        }
+      }
+    );
+
+    ipcMain.handle(
+      "admin:change-user-pin",
+      async (_, studentCode: string, newPin: string) => {
+        try {
+          const authCheck = await this.validateAdminAuth();
+          if (!authCheck.valid) {
+            throw new Error("Unauthorized: Admin authentication required");
+          }
+          return await this.dbService.changeUserPin(studentCode, newPin);
+        } catch (error) {
+          console.error("Change user PIN error:", error);
+          if (
+            error instanceof Error &&
+            error.message.includes("Unauthorized")
+          ) {
+            throw error;
+          }
+          return {
+            success: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to change user PIN",
+          };
+        }
+      }
+    );
+
     // Authentication operations
     ipcMain.handle(
       "auth:authenticate",
       async (_, studentCode: string, subjectCode: string, pin: string) => {
+        console.log("Authenticating with:", {
+          studentCode,
+          subjectCode,
+          pin,
+        });
         try {
           const result = await this.dbService.authenticate(
             studentCode,
             subjectCode,
             pin
           );
+
+          console.log("Authentication result:", result);
 
           if (result.success && result.sessionToken) {
             this.store.set("currentSession", {

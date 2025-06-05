@@ -235,13 +235,16 @@ export class LocalDatabaseService {
 
     currentAnswers[questionId] = answer;
 
-    await db
+    const updatedAttempt = await db
       .update(localSchema.quizAttempts)
       .set({
         answers: JSON.stringify(currentAnswers),
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(localSchema.quizAttempts.id, attemptId));
+      .where(eq(localSchema.quizAttempts.id, attemptId))
+      .returning();
+
+    console.log({ updatedAttempt });
   }
 
   async submitQuizAttempt(
@@ -305,6 +308,40 @@ export class LocalDatabaseService {
       createdAt: now,
       updatedAt: now,
     });
+  }
+
+  /**
+   * Update subject question count
+   */
+  async updateSubjectQuestionCount(subjectCode: string): Promise<void> {
+    const db = this.getDb();
+
+    const questionCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(localSchema.questions)
+      .where(
+        and(
+          eq(localSchema.questions.subjectCode, subjectCode),
+          eq(localSchema.questions.isActive, true),
+
+          sql`${localSchema.questions.text} NOT LIKE '[PASSAGE]%'`,
+          sql`${localSchema.questions.text} NOT LIKE '[HEADER]%'`
+        )
+      );
+
+    const count = questionCount[0]?.count || 0;
+
+    await db
+      .update(localSchema.subjects)
+      .set({
+        totalQuestions: count,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(localSchema.subjects.subjectCode, subjectCode));
+
+    console.log(
+      `Updated question count for subject ${subjectCode}: ${count} answerable questions`
+    );
   }
 
   /**
@@ -445,23 +482,6 @@ export class LocalDatabaseService {
   }
 
   /**
-   * Update total questions count for a subject
-   */
-  async updateSubjectQuestionCount(subjectCode: string): Promise<void> {
-    const db = this.getDb();
-
-    const count = await this.countQuestionsBySubjectCode(subjectCode);
-
-    await db
-      .update(localSchema.subjects)
-      .set({
-        totalQuestions: count,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(localSchema.subjects.subjectCode, subjectCode));
-  }
-
-  /**
    * Delete quiz attempts for a specific user and subject
    * This allows users to retake tests after admin intervention
    */
@@ -553,6 +573,130 @@ export class LocalDatabaseService {
   async checkDatabaseIntegrity(): Promise<boolean> {
     const sqliteManager = this.getSqliteManager();
     return sqliteManager.checkIntegrity();
+  }
+
+  /**
+   * User regulation methods for admin control
+   */
+
+  /**
+   * Toggle active state for all users
+   */
+  async toggleAllUsersActive(
+    isActive: boolean
+  ): Promise<{ success: boolean; error?: string; updatedCount?: number }> {
+    try {
+      const db = this.getDb();
+      const now = new Date().toISOString();
+
+      const result = await db
+        .update(localSchema.users)
+        .set({
+          isActive,
+          updatedAt: now,
+        })
+        .returning({ id: localSchema.users.id });
+
+      return {
+        success: true,
+        updatedCount: result.length,
+      };
+    } catch (error) {
+      console.error("Error toggling all users active state:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Toggle active state for a specific user
+   */
+  async toggleUserActive(
+    studentCode: string,
+    isActive: boolean
+  ): Promise<{ success: boolean; error?: string; updated?: boolean }> {
+    try {
+      const db = this.getDb();
+      const now = new Date().toISOString();
+
+      const result = await db
+        .update(localSchema.users)
+        .set({
+          isActive,
+          updatedAt: now,
+        })
+        .where(eq(localSchema.users.studentCode, studentCode))
+        .returning({ id: localSchema.users.id });
+
+      return {
+        success: true,
+        updated: result.length > 0,
+      };
+    } catch (error) {
+      console.error("Error toggling user active state:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Change user PIN
+   */
+  async changeUserPin(
+    studentCode: string,
+    newPin: string
+  ): Promise<{ success: boolean; error?: string; updated?: boolean }> {
+    try {
+      const db = this.getDb();
+      const now = new Date().toISOString();
+
+      const bcrypt = await import("bcryptjs");
+      const hashedPin = await bcrypt.hash(newPin, 10);
+
+      const result = await db
+        .update(localSchema.users)
+        .set({
+          passwordHash: hashedPin,
+          updatedAt: now,
+        })
+        .where(eq(localSchema.users.studentCode, studentCode))
+        .returning({ id: localSchema.users.id });
+
+      return {
+        success: true,
+        updated: result.length > 0,
+      };
+    } catch (error) {
+      console.error("Error changing user PIN:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Update user last login timestamp
+   */
+  async updateUserLastLogin(studentCode: string): Promise<void> {
+    try {
+      const db = this.getDb();
+      const now = new Date().toISOString();
+
+      await db
+        .update(localSchema.users)
+        .set({
+          lastLogin: now,
+          updatedAt: now,
+        })
+        .where(eq(localSchema.users.studentCode, studentCode));
+    } catch (error) {
+      console.error("Error updating user last login:", error);
+    }
   }
 
   /**

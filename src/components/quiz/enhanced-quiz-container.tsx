@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { QuizController } from "@/lib/quiz/quiz-controller";
 import { QuestionProcessor } from "@/lib/quiz/question-processor";
@@ -9,8 +9,9 @@ import { EnhancedQuestionDisplay } from "./enhanced-question-display";
 import { ProgressBar } from "./progress-bar";
 import { QuizResults } from "./quiz-results";
 import { QuizTimer } from "./quiz-timer";
+import { QuizInfo } from "./quiz-info";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import type {
   ProcessedQuizData,
   QuestionItem,
@@ -18,6 +19,8 @@ import type {
   User,
   Subject,
 } from "@/types/app";
+
+type QuizPhase = "loading" | "info" | "active" | "completed";
 
 interface QuizState {
   isLoading: boolean;
@@ -34,6 +37,8 @@ interface QuizState {
   subject: Subject | null;
   timeLimit: number | null; // in seconds
   timeRemaining: number | null; // in seconds
+  phase: QuizPhase;
+  autoSubmitTriggered: boolean; // Flag to prevent multiple auto-submit attempts
 }
 
 export function EnhancedQuizContainer() {
@@ -55,19 +60,65 @@ export function EnhancedQuizContainer() {
     subject: null,
     timeLimit: null,
     timeRemaining: null,
+    phase: "loading",
+    autoSubmitTriggered: false,
   });
 
   useEffect(() => {
-    initializeQuiz();
+    initializeAuth();
   }, []);
 
-  const initializeQuiz = async () => {
+  const initializeAuth = async () => {
     try {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       if (!authService.isElectronEnvironment()) {
         throw new Error("This application requires Electron environment");
       }
+
+      const session = await authService.getCurrentSession();
+
+      if (
+        !session ||
+        !session.isAuthenticated ||
+        !session.user ||
+        !session.subject
+      ) {
+        router.push("/");
+        return;
+      }
+
+      const controller = new QuizController();
+      const hasProgress = await controller.hasIncompleteAttemptWithProgress(
+        session.user.id,
+        session.subject.id
+      );
+
+      if (hasProgress) {
+        await initializeQuiz();
+        return;
+      }
+
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        user: session.user!,
+        subject: session.subject!,
+        phase: "info",
+      }));
+    } catch (error) {
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        error:
+          error instanceof Error ? error.message : "Failed to initialize quiz",
+      }));
+    }
+  };
+
+  const initializeQuiz = async () => {
+    try {
+      setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       const session = await authService.getCurrentSession();
 
@@ -106,6 +157,8 @@ export function EnhancedQuizContainer() {
             !(item.question.id in quizSession.answers)
           ) {
             currentIndex = i;
+            // Sync controller's current question index
+            controller.syncCurrentQuestionIndex(item.question.id);
             break;
           }
           // For headers, check if the paired question is answered
@@ -117,9 +170,19 @@ export function EnhancedQuizContainer() {
             const pairedQuestion = processedData.questionItems[i + 1];
             if (!(pairedQuestion.question.id in quizSession.answers)) {
               currentIndex = i; // Start from header
+              // Sync controller's current question index with the paired question
+              controller.syncCurrentQuestionIndex(pairedQuestion.question.id);
               break;
             }
           }
+        }
+      } else {
+        // Starting fresh - sync with first question
+        const firstQuestionItem = processedData.questionItems.find(
+          (item) => item.type === "question"
+        );
+        if (firstQuestionItem && firstQuestionItem.type === "question") {
+          controller.syncCurrentQuestionIndex(firstQuestionItem.question.id);
         }
       }
 
@@ -131,6 +194,7 @@ export function EnhancedQuizContainer() {
           session.user.id,
           session.subject.id
         );
+
         if (timeLimit) {
           const currentElapsed = quizSession.elapsedTime || 0;
           timeRemaining = Math.max(0, timeLimit - currentElapsed);
@@ -151,6 +215,7 @@ export function EnhancedQuizContainer() {
         subject: session.subject || null,
         timeLimit,
         timeRemaining,
+        phase: "active",
       }));
     } catch (error) {
       setState((prev) => ({
@@ -160,6 +225,10 @@ export function EnhancedQuizContainer() {
           error instanceof Error ? error.message : "Failed to initialize quiz",
       }));
     }
+  };
+
+  const handleStartQuiz = async () => {
+    await initializeQuiz();
   };
 
   const handleAnswerSelect = async (selectedOption: string) => {
@@ -184,17 +253,29 @@ export function EnhancedQuizContainer() {
     if (!questionToAnswer) return;
 
     try {
-      const result = await state.quizController.saveAnswer(selectedOption);
+      // Sync the controller's current question index with the current question
+      state.quizController.syncCurrentQuestionIndex(
+        questionToAnswer.question.id
+      );
+
+      const result = await state.quizController.saveAnswerForQuestion(
+        questionToAnswer.question.id,
+        selectedOption
+      );
+
+      console.log("result", result);
 
       if (!result.success) {
         throw new Error(result.error || "Failed to save answer");
       }
 
       const session = state.quizController.getCurrentSession();
+
+      console.log("session", session);
       if (session) {
         setState((prev) => ({
           ...prev,
-          answers: session.answers,
+          answers: { ...session.answers },
         }));
       }
     } catch (error) {
@@ -207,7 +288,7 @@ export function EnhancedQuizContainer() {
   };
 
   const handleNextQuestion = () => {
-    if (!state.processedData) return;
+    if (!state.processedData || !state.quizController) return;
 
     const nextIndex = QuestionProcessor.getNextAnswerableQuestionIndex(
       state.processedData.questionItems,
@@ -216,11 +297,26 @@ export function EnhancedQuizContainer() {
 
     if (nextIndex !== null) {
       setState((prev) => ({ ...prev, currentIndex: nextIndex }));
+
+      // Sync controller's current question index with the new position
+      const nextItem = state.processedData.questionItems[nextIndex];
+      if (nextItem.type === "question") {
+        state.quizController.syncCurrentQuestionIndex(nextItem.question.id);
+      } else if (
+        nextItem.type === "header" &&
+        nextIndex + 1 < state.processedData.questionItems.length &&
+        state.processedData.questionItems[nextIndex + 1].type === "question"
+      ) {
+        const pairedQuestion = state.processedData.questionItems[nextIndex + 1];
+        state.quizController.syncCurrentQuestionIndex(
+          pairedQuestion.question.id
+        );
+      }
     }
   };
 
   const handlePreviousQuestion = () => {
-    if (!state.processedData) return;
+    if (!state.processedData || !state.quizController) return;
 
     const prevIndex = QuestionProcessor.getPreviousAnswerableQuestionIndex(
       state.processedData.questionItems,
@@ -229,6 +325,21 @@ export function EnhancedQuizContainer() {
 
     if (prevIndex !== null) {
       setState((prev) => ({ ...prev, currentIndex: prevIndex }));
+
+      // Sync controller's current question index with the new position
+      const prevItem = state.processedData.questionItems[prevIndex];
+      if (prevItem.type === "question") {
+        state.quizController.syncCurrentQuestionIndex(prevItem.question.id);
+      } else if (
+        prevItem.type === "header" &&
+        prevIndex + 1 < state.processedData.questionItems.length &&
+        state.processedData.questionItems[prevIndex + 1].type === "question"
+      ) {
+        const pairedQuestion = state.processedData.questionItems[prevIndex + 1];
+        state.quizController.syncCurrentQuestionIndex(
+          pairedQuestion.question.id
+        );
+      }
     }
   };
 
@@ -263,16 +374,124 @@ export function EnhancedQuizContainer() {
     router.push("/");
   };
 
-  // Auto-submit when time runs out
-  useEffect(() => {
+  const handleTimerTick = useCallback(
+    (remainingTime: number) => {
+      // Auto-submit when time expires
+      if (
+        remainingTime <= 0 &&
+        state.phase === "active" &&
+        !state.isSubmitted &&
+        !state.isSubmitting &&
+        !state.autoSubmitTriggered
+      ) {
+        setState((prev) => ({ ...prev, autoSubmitTriggered: true }));
+        handleSubmitQuiz();
+        return;
+      }
+
+      // setState((prev) => ({
+      //   ...prev,
+      //   timeRemaining: remainingTime,
+      // }));
+    },
+    [
+      state.phase,
+      state.isSubmitted,
+      state.isSubmitting,
+      state.autoSubmitTriggered,
+    ]
+  );
+
+  // Current question number - force recalculation on navigation
+  const currentQuestion = useMemo(() => {
+    if (!state.processedData) return 1;
+    return QuestionProcessor.getCurrentQuestionNumber(
+      state.processedData.questionItems,
+      state.processedData.actualQuestions,
+      state.currentIndex
+    );
+  }, [state.processedData, state.currentIndex]);
+
+  // Selected answer and current question ID
+  const { selectedAnswer, currentQuestionId } = useMemo(() => {
     if (
-      state.timeRemaining !== null &&
-      state.timeRemaining <= 0 &&
-      !state.isSubmitted
+      !state.processedData ||
+      state.currentIndex < 0 ||
+      state.currentIndex >= state.processedData.questionItems.length
     ) {
-      handleSubmitQuiz();
+      console.log("no processed data");
+      return { selectedAnswer: undefined, currentQuestionId: undefined };
     }
-  }, [state.timeRemaining, state.isSubmitted]);
+
+    const currentItem = state.processedData.questionItems[state.currentIndex];
+
+    console.log("currentItem", currentItem);
+
+    if (currentItem.type === "question") {
+      const questionId = currentItem.question.id;
+
+      return {
+        selectedAnswer: state.answers[questionId] || undefined,
+        currentQuestionId: questionId,
+      };
+    } else if (
+      currentItem.type === "header" &&
+      state.currentIndex + 1 < state.processedData.questionItems.length &&
+      state.processedData.questionItems[state.currentIndex + 1].type ===
+        "question"
+    ) {
+      const pairedQuestion =
+        state.processedData.questionItems[state.currentIndex + 1];
+      const questionId = pairedQuestion.question.id;
+      return {
+        selectedAnswer: state.answers[questionId] || undefined,
+        currentQuestionId: questionId,
+      };
+    }
+
+    return { selectedAnswer: undefined, currentQuestionId: undefined };
+  }, [state.processedData, state.currentIndex, state.answers]);
+
+  // Navigation calculations
+  const { canGoNext, canGoPrevious, isLastQuestion } = useMemo(() => {
+    if (!state.processedData) {
+      return { canGoNext: false, canGoPrevious: false, isLastQuestion: false };
+    }
+
+    return {
+      canGoNext:
+        QuestionProcessor.getNextAnswerableQuestionIndex(
+          state.processedData.questionItems,
+          state.currentIndex
+        ) !== null,
+      canGoPrevious:
+        QuestionProcessor.getPreviousAnswerableQuestionIndex(
+          state.processedData.questionItems,
+          state.currentIndex
+        ) !== null,
+      isLastQuestion: QuestionProcessor.isLastAnswerableQuestion(
+        state.processedData.questionItems,
+        state.currentIndex
+      ),
+    };
+  }, [state.processedData, state.currentIndex]);
+
+  // Answer count and percentage
+  const { answeredCount, percentage } = useMemo(() => {
+    if (!state.processedData) {
+      return { answeredCount: 0, percentage: 0 };
+    }
+
+    const count = QuestionProcessor.countAnsweredQuestions(
+      state.processedData.actualQuestions,
+      state.answers
+    );
+    const percent = Math.round(
+      (count / state.processedData.totalQuestions) * 100
+    );
+
+    return { answeredCount: count, percentage: percent };
+  }, [state.processedData, state.answers]);
 
   if (state.isLoading) {
     return (
@@ -299,6 +518,17 @@ export function EnhancedQuizContainer() {
           </Button>
         </div>
       </div>
+    );
+  }
+
+  if (state.phase === "info" && state.user && state.subject) {
+    return (
+      <QuizInfo
+        student={state.user}
+        subject={state.subject}
+        onStartQuiz={handleStartQuiz}
+        isLoading={state.isLoading}
+      />
     );
   }
 
@@ -329,48 +559,6 @@ export function EnhancedQuizContainer() {
     return null;
   }
 
-  const currentItem = state.processedData.questionItems[state.currentIndex];
-  const answeredCount = QuestionProcessor.countAnsweredQuestions(
-    state.processedData.actualQuestions,
-    state.answers
-  );
-
-  // Determine selected answer for current question
-  let selectedAnswer: string | undefined;
-  if (currentItem.type === "question") {
-    selectedAnswer = state.answers[currentItem.question.id];
-  } else if (
-    currentItem.type === "header" &&
-    state.currentIndex + 1 < state.processedData.questionItems.length &&
-    state.processedData.questionItems[state.currentIndex + 1].type ===
-      "question"
-  ) {
-    const pairedQuestion =
-      state.processedData.questionItems[state.currentIndex + 1];
-    selectedAnswer = state.answers[pairedQuestion.question.id];
-  }
-
-  const canGoNext =
-    QuestionProcessor.getNextAnswerableQuestionIndex(
-      state.processedData.questionItems,
-      state.currentIndex
-    ) !== null;
-
-  const canGoPrevious =
-    QuestionProcessor.getPreviousAnswerableQuestionIndex(
-      state.processedData.questionItems,
-      state.currentIndex
-    ) !== null;
-
-  const isLastQuestion = QuestionProcessor.isLastAnswerableQuestion(
-    state.processedData.questionItems,
-    state.currentIndex
-  );
-
-  const percentage = Math.round(
-    (answeredCount / state.processedData.totalQuestions) * 100
-  );
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-200 px-6 py-4">
@@ -385,18 +573,17 @@ export function EnhancedQuizContainer() {
               </span>
               <QuizTimer
                 startTime={state.startTime}
+                timeLimit={state.timeLimit || 3600}
                 previousElapsedTime={
                   state.quizController?.getCurrentSession()?.elapsedTime || 0
                 }
+                onTimeUpdate={handleTimerTick}
               />
             </div>
           </div>
           <ProgressBar
-            currentQuestion={QuestionProcessor.getCurrentQuestionNumber(
-              state.processedData.questionItems,
-              state.processedData.actualQuestions,
-              state.currentIndex
-            )}
+            key={`progress-${state.currentIndex}-${currentQuestion}-${answeredCount}`}
+            currentQuestion={currentQuestion}
             totalQuestions={state.processedData.totalQuestions}
             answeredQuestions={answeredCount}
             percentage={percentage}
@@ -406,6 +593,7 @@ export function EnhancedQuizContainer() {
 
       <div className="py-8">
         <EnhancedQuestionDisplay
+          key={`question-display-${state.currentIndex}-${currentQuestionId}`}
           questionItems={state.processedData.questionItems}
           currentIndex={state.currentIndex}
           selectedAnswer={selectedAnswer}
@@ -419,6 +607,7 @@ export function EnhancedQuizContainer() {
           isSubmitting={state.isSubmitting}
           totalQuestions={state.processedData.totalQuestions}
           answeredCount={answeredCount}
+          currentQuestion={currentQuestion}
         />
       </div>
     </div>

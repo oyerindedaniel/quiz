@@ -1,23 +1,19 @@
 import { normalizeError, SyncError } from "../../error/err.js";
+import * as dns from "dns";
+import * as net from "net";
+import { promisify } from "util";
 
 export type ConnectivityStatus = "online" | "offline" | "checking";
 
 export interface NetworkInfo {
   isOnline: boolean;
-  connectionType?: "wifi" | "cellular" | "ethernet" | "unknown";
-  effectiveType?: "slow-2g" | "2g" | "3g" | "4g" | "unknown";
-  downlink?: number; // Effective bandwidth estimate in megabits per second
-  rtt?: number; // Effective round-trip time in milliseconds
+  connectionType: "ethernet" | "wifi" | "unknown";
+  latency?: number;
+  dnsResolution?: boolean;
 }
 
-// NetworkInformation interface for better typing
-interface NetworkConnection extends EventTarget {
-  effectiveType?: "2g" | "3g" | "4g" | "slow-2g";
-  downlink?: number;
-  rtt?: number;
-  saveData?: boolean;
-  type?: string;
-}
+const dnsLookup = promisify(dns.lookup);
+const dnsResolve = promisify(dns.resolve);
 
 export class ConnectivityHandler {
   private isInitialized = false;
@@ -41,10 +37,8 @@ export class ConnectivityHandler {
 
     try {
       console.log(
-        "ConnectivityHandler: Initializing connectivity monitoring..."
+        "ConnectivityHandler: Initializing connectivity monitoring for main process..."
       );
-
-      this.setupBrowserListeners();
 
       this.checkConnectivity().then((isOnline) => {
         this.currentStatus = isOnline ? "online" : "offline";
@@ -66,13 +60,16 @@ export class ConnectivityHandler {
   }
 
   /**
-   * Check current connectivity status
+   * Check current connectivity status using Node.js APIs
    */
   async checkConnectivity(): Promise<boolean> {
     const now = Date.now();
 
-    // Respect cooldown period to avoid excessive checks
-    if (now - this.lastCheckTime < this.checkCooldown) {
+    // Reduce cooldown during initialization for faster startup detection
+    const cooldown = this.isInitialized ? this.checkCooldown : 1000; // 1 second during startup
+
+    // Avoid excessive checks
+    if (now - this.lastCheckTime < cooldown) {
       return this.currentStatus === "online";
     }
 
@@ -81,17 +78,10 @@ export class ConnectivityHandler {
     try {
       console.log("ConnectivityHandler: Checking connectivity...");
 
-      // First check navigator.onLine
-      if (!navigator.onLine) {
-        this.updateStatus(false);
-        return false;
-      }
+      const isOnline = await this.performNetworkTest();
+      this.updateStatus(isOnline);
 
-      // Perform actual network test
-      const isReallyOnline = await this.performNetworkTest();
-      this.updateStatus(isReallyOnline);
-
-      return isReallyOnline;
+      return isOnline;
     } catch (error) {
       console.error("ConnectivityHandler: Connectivity check failed:", error);
       this.updateStatus(false);
@@ -110,14 +100,9 @@ export class ConnectivityHandler {
    * Get detailed network information
    */
   getNetworkInfo(): NetworkInfo {
-    const connection = this.getNetworkConnection();
-
     return {
       isOnline: this.currentStatus === "online",
-      connectionType: this.getConnectionType(connection),
-      effectiveType: connection?.effectiveType || "unknown",
-      downlink: connection?.downlink,
-      rtt: connection?.rtt,
+      connectionType: "unknown", // In main process we can't easily detect connection type
     };
   }
 
@@ -187,46 +172,29 @@ export class ConnectivityHandler {
    */
   async testConnectionQuality(): Promise<{
     latency: number;
-    bandwidth: number;
+    dnsResolution: boolean;
     quality: "excellent" | "good" | "fair" | "poor";
   }> {
     try {
-      const startTime = performance.now();
+      const startTime = Date.now();
 
-      // Test with a small endpoint
-      const response = await fetch(
-        `${window.location.origin}/favicon.ico?t=${Date.now()}`,
-        {
-          method: "HEAD",
-          cache: "no-cache",
-          signal: AbortSignal.timeout(5000),
-        }
-      );
+      // Test DNS resolution
+      await dnsResolve("google.com", "A");
+      const latency = Date.now() - startTime;
 
-      const latency = performance.now() - startTime;
-
-      if (!response.ok) {
-        throw new Error("Network test request failed");
-      }
-
-      // Estimate quality based on latency
       let quality: "excellent" | "good" | "fair" | "poor";
       if (latency < 100) quality = "excellent";
       else if (latency < 300) quality = "good";
       else if (latency < 1000) quality = "fair";
       else quality = "poor";
 
-      // Get connection info for bandwidth estimate
-      const connection = this.getNetworkConnection();
-      const bandwidth = connection?.downlink || 0;
-
-      return { latency, bandwidth, quality };
+      return { latency, dnsResolution: true, quality };
     } catch (error) {
       console.error(
         "ConnectivityHandler: Connection quality test failed:",
         error
       );
-      return { latency: 9999, bandwidth: 0, quality: "poor" };
+      return { latency: 9999, dnsResolution: false, quality: "poor" };
     }
   }
 
@@ -237,96 +205,80 @@ export class ConnectivityHandler {
     console.log("ConnectivityHandler: Cleaning up...");
 
     this.stopMonitoring();
-    this.removeBrowserListeners();
     this.listeners.length = 0;
     this.isInitialized = false;
 
     console.log("ConnectivityHandler: Cleanup completed");
   }
 
-  private setupBrowserListeners(): void {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.addEventListener("online", this.handleOnline.bind(this));
-    window.addEventListener("offline", this.handleOffline.bind(this));
-
-    // Listen for network connection changes (if supported)
-    const connection = this.getNetworkConnection();
-    if (connection) {
-      connection.addEventListener(
-        "change",
-        this.handleConnectionChange.bind(this)
-      );
-    }
-
-    document.addEventListener(
-      "visibilitychange",
-      this.handleVisibilityChange.bind(this)
-    );
-  }
-
-  private removeBrowserListeners(): void {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.removeEventListener("online", this.handleOnline.bind(this));
-    window.removeEventListener("offline", this.handleOffline.bind(this));
-
-    const connection = this.getNetworkConnection();
-    if (connection) {
-      connection.removeEventListener(
-        "change",
-        this.handleConnectionChange.bind(this)
-      );
-    }
-
-    document.removeEventListener(
-      "visibilitychange",
-      this.handleVisibilityChange.bind(this)
-    );
-  }
-
+  /**
+   * Perform network connectivity test
+   */
   private async performNetworkTest(): Promise<boolean> {
     try {
-      // Test multiple endpoints for reliability
-      const testEndpoints = [
-        `${window.location.origin}/favicon.ico`,
-        "https://www.google.com/favicon.ico",
-        "https://httpbin.org/status/200",
-      ];
+      console.log("ConnectivityHandler: Performing network test...");
 
-      // Try endpoints with timeouts
-      for (const endpoint of testEndpoints) {
-        try {
-          const response = await fetch(`${endpoint}?t=${Date.now()}`, {
-            method: "HEAD",
-            mode: endpoint.startsWith(window.location.origin)
-              ? "same-origin"
-              : "no-cors",
-            cache: "no-cache",
-            signal: AbortSignal.timeout(3000),
-          });
-
-          // If any endpoint succeeds, we're online
-          if (response.ok || response.type === "opaque") {
-            console.log(
-              `ConnectivityHandler: Network test passed (${endpoint})`
-            );
-            return true;
-          }
-        } catch (error) {
-          console.warn(
-            `ConnectivityHandler: Test failed for ${endpoint}:`,
-            error
-          );
-          continue;
-        }
+      // Test 1: DNS resolution to Google
+      try {
+        await dnsResolve("google.com", "A");
+        console.log("ConnectivityHandler: DNS test passed (google.com)");
+        return true;
+      } catch (dnsError) {
+        console.warn(
+          "ConnectivityHandler: DNS test failed (google.com):",
+          normalizeError(dnsError).message
+        );
       }
 
-      console.log("ConnectivityHandler: All network tests failed");
+      // Test 2: DNS resolution to alternative
+      try {
+        await dnsResolve("cloudflare.com", "A");
+        console.log("ConnectivityHandler: DNS test passed (cloudflare.com)");
+        return true;
+      } catch (dnsError) {
+        console.warn(
+          "ConnectivityHandler: DNS test failed (cloudflare.com):",
+          normalizeError(dnsError).message
+        );
+      }
+
+      // Test 3: DNS lookup to Google's public DNS
+      try {
+        await dnsLookup("8.8.8.8");
+        console.log("ConnectivityHandler: DNS lookup test passed (8.8.8.8)");
+        return true;
+      } catch (lookupError) {
+        console.warn(
+          "ConnectivityHandler: DNS lookup test failed (8.8.8.8):",
+          normalizeError(lookupError).message
+        );
+      }
+
+      // Test 4: Socket connection test to Google DNS
+      try {
+        await this.testSocketConnection("8.8.8.8", 53, 2000);
+        console.log("ConnectivityHandler: Socket test passed (8.8.8.8:53)");
+        return true;
+      } catch (socketError) {
+        console.warn(
+          "ConnectivityHandler: Socket test failed (8.8.8.8:53):",
+          normalizeError(socketError).message
+        );
+      }
+
+      // Test 5: Socket connection test to Cloudflare DNS
+      try {
+        await this.testSocketConnection("1.1.1.1", 53, 2000);
+        console.log("ConnectivityHandler: Socket test passed (1.1.1.1:53)");
+        return true;
+      } catch (socketError) {
+        console.warn(
+          "ConnectivityHandler: Socket test failed (1.1.1.1:53):",
+          normalizeError(socketError).message
+        );
+      }
+
+      console.log("ConnectivityHandler: All network tests failed - offline");
       return false;
     } catch (error) {
       console.error("ConnectivityHandler: Network test error:", error);
@@ -334,54 +286,41 @@ export class ConnectivityHandler {
     }
   }
 
-  private getNetworkConnection(): NetworkConnection | null {
-    // Try to get network connection info (experimental API)
-    if (typeof navigator !== "undefined") {
-      return (
-        (navigator as any).connection ||
-        (navigator as any).mozConnection ||
-        (navigator as any).webkitConnection
-      );
-    }
-    return null;
+  /**
+   * Test socket connection to a host and port
+   */
+  private testSocketConnection(
+    host: string,
+    port: number,
+    timeout: number = 3000
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const socket = new net.Socket();
+
+      const onError = (error: Error) => {
+        socket.destroy();
+        reject(error);
+      };
+
+      const onTimeout = () => {
+        socket.destroy();
+        reject(new Error("Socket connection timeout"));
+      };
+
+      socket.setTimeout(timeout);
+      socket.on("error", onError);
+      socket.on("timeout", onTimeout);
+
+      socket.connect(port, host, () => {
+        socket.destroy();
+        resolve();
+      });
+    });
   }
 
-  private getConnectionType(
-    connection: NetworkConnection | null
-  ): "wifi" | "cellular" | "ethernet" | "unknown" {
-    if (!connection) {
-      return "unknown";
-    }
-
-    const type = connection.type || connection.effectiveType;
-
-    if (type === "wifi") return "wifi";
-    if (type === "ethernet") return "ethernet";
-    if (
-      type &&
-      (type.includes("cellular") || type.includes("4g") || type.includes("3g"))
-    ) {
-      return "cellular";
-    }
-    return "unknown";
-  }
-
-  private analyzeNetworkQuality(): {
-    effectiveType: string;
-    downlink: number;
-    rtt: number;
-    connection: NetworkConnection | null;
-  } {
-    const connection = this.getNetworkConnection();
-
-    return {
-      effectiveType: connection?.effectiveType || "unknown",
-      downlink: connection?.downlink || 0,
-      rtt: connection?.rtt || 0,
-      connection,
-    };
-  }
-
+  /**
+   * Update connectivity status and notify listeners
+   */
   private updateStatus(isOnline: boolean): void {
     const newStatus: ConnectivityStatus = isOnline ? "online" : "offline";
 
@@ -402,31 +341,6 @@ export class ConnectivityHandler {
           console.error("ConnectivityHandler: Listener error:", error);
         }
       });
-    }
-  }
-
-  private handleOnline(): void {
-    console.log("ConnectivityHandler: Browser online event received");
-    this.checkConnectivity();
-  }
-
-  private handleOffline(): void {
-    console.log("ConnectivityHandler: Browser offline event received");
-    this.updateStatus(false);
-  }
-
-  private handleConnectionChange(): void {
-    console.log("ConnectivityHandler: Network connection changed");
-    this.checkConnectivity();
-  }
-
-  private handleVisibilityChange(): void {
-    if (document.visibilityState === "visible") {
-      console.log(
-        "ConnectivityHandler: App became visible, checking connectivity"
-      );
-      // Check connectivity when app becomes visible
-      this.checkConnectivity();
     }
   }
 }

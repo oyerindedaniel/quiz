@@ -3,7 +3,7 @@
  * Contains class lists and subject information for seeding
  */
 
-import type { StudentData, SubjectData, Class, Gender } from "@/types/app";
+import type { StudentData, SubjectData, Class } from "@/types/app";
 
 /**
  * BASIC 5 Class Student List
@@ -38,6 +38,7 @@ export const BASIC5_STUDENTS: Omit<StudentData, "studentCode">[] = [
   { name: "OLANIYI MICHAEL OLAMIDE", gender: "MALE", class: "BASIC5" },
   { name: "OJIKUTU PRECIOUS AYOMIDE", gender: "FEMALE", class: "BASIC5" },
   { name: "ADEKOLA DANIEL OLUWADARASIMI", gender: "MALE", class: "BASIC5" },
+  { name: "OYERINDE DANIEL", gender: "MALE", class: "BASIC5" },
 ];
 
 /**
@@ -66,6 +67,7 @@ export const JSS3_STUDENTS: Omit<StudentData, "studentCode">[] = [
   },
   { name: "OLOJU DOYINSOLA ABIGAEL", gender: "FEMALE", class: "JSS3" },
   { name: "CHINEDU PRECIOUS CHIDIMMA", gender: "FEMALE", class: "JSS3" },
+  { name: "OYERINDE DANIEL", gender: "MALE", class: "JSS3" },
 ];
 
 /**

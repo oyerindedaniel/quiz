@@ -433,13 +433,23 @@ class QuizApp {
         });
         electron_1.ipcMain.handle("quiz:delete-quiz-attempts", async (_, studentCode, subjectCode) => {
             try {
-                return await this.dbService.deleteLocalQuizAttempts(studentCode, subjectCode);
+                const authCheck = await this.validateAdminAuth();
+                if (!authCheck.valid) {
+                    throw new Error("Unauthorized: Admin authentication required");
+                }
+                return await this.dbService.deleteQuizAttempts(studentCode, subjectCode);
             }
             catch (error) {
-                console.error("Delete local quiz attempts error:", error);
+                console.error("Delete quiz attempts error:", error);
+                if (error instanceof Error &&
+                    error.message.includes("Unauthorized")) {
+                    throw error;
+                }
                 return {
                     success: false,
-                    error: error instanceof Error ? error.message : "Unknown error",
+                    error: error instanceof Error
+                        ? error.message
+                        : "Failed to delete quiz attempts",
                 };
             }
         });
@@ -804,6 +814,22 @@ class QuizApp {
                 };
             }
         });
+        electron_1.ipcMain.handle("admin:get-student-credentials", async () => {
+            try {
+                const authCheck = await this.validateAdminAuth();
+                if (!authCheck.valid) {
+                    throw new Error("Unauthorized: Admin authentication required");
+                }
+                return await this.dbService.getStudentCredentials();
+            }
+            catch (error) {
+                console.error("Get student credentials error:", error);
+                if (error instanceof Error && error.message.includes("Unauthorized")) {
+                    throw error;
+                }
+                return [];
+            }
+        });
         electron_1.ipcMain.handle("admin:delete-quiz-attempts", async (_, studentCode, subjectCode) => {
             try {
                 const authCheck = await this.validateAdminAuth();
@@ -826,10 +852,83 @@ class QuizApp {
                 };
             }
         });
+        // User regulation handlers
+        electron_1.ipcMain.handle("admin:toggle-all-users-active", async (_, isActive) => {
+            try {
+                const authCheck = await this.validateAdminAuth();
+                if (!authCheck.valid) {
+                    throw new Error("Unauthorized: Admin authentication required");
+                }
+                return await this.dbService.toggleAllUsersActive(isActive);
+            }
+            catch (error) {
+                console.error("Toggle all users active error:", error);
+                if (error instanceof Error &&
+                    error.message.includes("Unauthorized")) {
+                    throw error;
+                }
+                return {
+                    success: false,
+                    error: error instanceof Error
+                        ? error.message
+                        : "Failed to toggle all users active state",
+                };
+            }
+        });
+        electron_1.ipcMain.handle("admin:toggle-user-active", async (_, studentCode, isActive) => {
+            try {
+                const authCheck = await this.validateAdminAuth();
+                if (!authCheck.valid) {
+                    throw new Error("Unauthorized: Admin authentication required");
+                }
+                return await this.dbService.toggleUserActive(studentCode, isActive);
+            }
+            catch (error) {
+                console.error("Toggle user active error:", error);
+                if (error instanceof Error &&
+                    error.message.includes("Unauthorized")) {
+                    throw error;
+                }
+                return {
+                    success: false,
+                    error: error instanceof Error
+                        ? error.message
+                        : "Failed to toggle user active state",
+                };
+            }
+        });
+        electron_1.ipcMain.handle("admin:change-user-pin", async (_, studentCode, newPin) => {
+            try {
+                const authCheck = await this.validateAdminAuth();
+                if (!authCheck.valid) {
+                    throw new Error("Unauthorized: Admin authentication required");
+                }
+                return await this.dbService.changeUserPin(studentCode, newPin);
+            }
+            catch (error) {
+                console.error("Change user PIN error:", error);
+                if (error instanceof Error &&
+                    error.message.includes("Unauthorized")) {
+                    throw error;
+                }
+                return {
+                    success: false,
+                    error: error instanceof Error
+                        ? error.message
+                        : "Failed to change user PIN",
+                };
+            }
+        });
         // Authentication operations
         electron_1.ipcMain.handle("auth:authenticate", async (_, studentCode, subjectCode, pin) => {
+            console.log("Authenticating with:", {
+                studentCode,
+                subjectCode,
+                pin,
+            });
             try {
                 const result = await this.dbService.authenticate(studentCode, subjectCode, pin);
+                console.log("Authentication result:", result);
                 if (result.success && result.sessionToken) {
                     this.store.set("currentSession", {
                         user: result.user,

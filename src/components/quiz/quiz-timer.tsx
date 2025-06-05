@@ -79,7 +79,6 @@ export function QuizTimer({
 
   const timeDisplay = formatTimeWithLabels(displayTime);
 
-  // Determine the styling based on time state
   const getTimerStyle = () => {
     if (timeExpired) {
       return {
@@ -178,7 +177,6 @@ export function QuizTimer({
           </div>
         </div>
 
-        {/* Progress Bar (only for countdown) */}
         {isCountdown && timeLimit && (
           <div className="space-y-2">
             <div className="w-full bg-gray-200 rounded-full h-2">
@@ -203,7 +201,6 @@ export function QuizTimer({
           </div>
         )}
 
-        {/* Warning Messages */}
         {timeExpired && (
           <div className="flex items-center gap-2 p-2 bg-incorrect-100 rounded border border-incorrect-200">
             <AlertTriangle className="h-4 w-4 text-incorrect-600" />
@@ -231,7 +228,6 @@ export function QuizTimer({
           </div>
         )}
 
-        {/* Additional Info for Elapsed Time */}
         {!isCountdown && previousElapsedTime > 0 && (
           <div className="text-xs text-brand-600 text-center font-sans">
             Previous session: {formatTime(previousElapsedTime)} • Current:{" "}

@@ -28,7 +28,6 @@ export function ProgressBar({
 
   return (
     <div className="w-full max-w-4xl mx-auto p-6 space-y-6">
-      {/* Progress Header */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
         <div className="bg-brand-500 px-6 py-4">
           <div className="flex items-center justify-between">
@@ -40,7 +39,6 @@ export function ProgressBar({
         </div>
 
         <div className="p-6">
-          {/* Progress Bar */}
           <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
             <div
               className="bg-brand-500 h-3 rounded-full transition-all duration-300 ease-out"
@@ -57,7 +55,6 @@ export function ProgressBar({
         </div>
       </div>
 
-      {/* Question Grid Navigation */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
         <h4 className="text-md font-medium text-gray-700 mb-4 flex items-center">
           <svg
@@ -108,7 +105,6 @@ export function ProgressBar({
           })}
         </div>
 
-        {/* Legend */}
         <div className="flex items-center justify-center space-x-6 mt-6">
           <div className="flex items-center space-x-2">
             <div className="w-4 h-4 bg-brand-500 rounded"></div>

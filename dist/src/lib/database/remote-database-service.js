@@ -37,13 +37,11 @@ exports.RemoteDatabaseService = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const neon_js_1 = require("./neon.js");
 const remote_schema_js_1 = require("./remote-schema.js");
-const dotenv_1 = require("dotenv");
-(0, dotenv_1.config)();
+const drizzle_js_1 = require("../../utils/drizzle.js");
 class RemoteDatabaseService {
     constructor() {
         this.db = null;
         this.neonManager = null;
-        // this.initialize(process.env.NEON_DATABASE_URL);
     }
     static getInstance() {
         if (!RemoteDatabaseService.instance) {
@@ -89,9 +87,52 @@ class RemoteDatabaseService {
             .limit(1);
         return users[0] || null;
     }
+    async findUserByName(name) {
+        const db = this.getDb();
+        const users = await db
+            .select()
+            .from(remote_schema_js_1.remoteSchema.users)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.users.name, name), (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.users.isActive, true)))
+            .limit(1);
+        return users[0] || null;
+    }
     async createUser(userData) {
         const db = this.getDb();
         await db.insert(remote_schema_js_1.remoteSchema.users).values(userData);
+    }
+    async createOrUpdateUser(userData) {
+        const db = this.getDb();
+        const now = new Date();
+        try {
+            await db.insert(remote_schema_js_1.remoteSchema.users).values({
+                ...userData,
+                createdAt: now,
+                updatedAt: now,
+            });
+            return { created: true, updated: false };
+        }
+        catch (error) {
+            try {
+                const existing = await this.findUserByName(userData.name);
+                if (existing) {
+                    await db
+                        .update(remote_schema_js_1.remoteSchema.users)
+                        .set({
+                        studentCode: userData.studentCode,
+                        passwordHash: userData.passwordHash,
+                        class: userData.class,
+                        gender: userData.gender,
+                        updatedAt: now,
+                    })
+                        .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.users.id, existing.id));
+                    return { created: false, updated: true };
+                }
+            }
+            catch (updateError) {
+                console.error("Failed to update user:", updateError);
+            }
+            throw error;
+        }
     }
     async updateUser(userId, userData) {
         const db = this.getDb();
@@ -125,6 +166,39 @@ class RemoteDatabaseService {
     async createSubject(subjectData) {
         const db = this.getDb();
         await db.insert(remote_schema_js_1.remoteSchema.subjects).values(subjectData);
+    }
+    async createOrUpdateSubject(subjectData) {
+        const db = this.getDb();
+        const now = new Date();
+        try {
+            await db.insert(remote_schema_js_1.remoteSchema.subjects).values({
+                ...subjectData,
+                createdAt: now,
+                updatedAt: now,
+            });
+            return { created: true, updated: false };
+        }
+        catch (error) {
+            try {
+                const existing = await this.findSubjectByCode(subjectData.subjectCode);
+                if (existing) {
+                    await db
+                        .update(remote_schema_js_1.remoteSchema.subjects)
+                        .set({
+                        name: subjectData.name,
+                        description: subjectData.description,
+                        class: subjectData.class,
+                        updatedAt: now,
+                    })
+                        .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.subjects.id, existing.id));
+                    return { created: false, updated: true };
+                }
+            }
+            catch (updateError) {
+                console.error("Failed to update subject:", updateError);
+            }
+            throw error;
+        }
     }
     async updateSubject(subjectId, subjectData) {
         const db = this.getDb();
@@ -163,6 +237,15 @@ class RemoteDatabaseService {
             updatedAt: now,
         });
     }
+    async findQuestionByTextAndOrder(text, questionOrder, subjectId) {
+        const db = this.getDb();
+        const questions = await db
+            .select()
+            .from(remote_schema_js_1.remoteSchema.questions)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.text, text), (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.questionOrder, questionOrder), (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.subjectId, subjectId), (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.isActive, true)))
+            .limit(1);
+        return questions[0] || null;
+    }
     /**
      * Bulk create questions for better performance
      */
@@ -190,6 +273,92 @@ class RemoteDatabaseService {
                 success: false,
                 created: 0,
                 error: error instanceof Error ? error.message : "Unknown error",
+            };
+        }
+    }
+    /**
+     * Update subject question count
+     */
+    async updateSubjectQuestionCount(subjectCode) {
+        const db = this.getDb();
+        // Only count answerable questions (not passages and headers)
+        const questionCount = await db
+            .select()
+            .from(remote_schema_js_1.remoteSchema.questions)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.subjectCode, subjectCode), (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.isActive, true), (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[PASSAGE]%'`, (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[HEADER]%'`));
+        const count = questionCount.length;
+        await db
+            .update(remote_schema_js_1.remoteSchema.subjects)
+            .set({
+            totalQuestions: count,
+            updatedAt: new Date(),
+        })
+            .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.subjects.subjectCode, subjectCode));
+        console.log(`Updated question count for subject ${subjectCode}: ${count} answerable questions`);
+    }
+    /**
+     * Bulk upsert questions for idempotent seeding
+     * Uses question text and order to detect duplicates
+     */
+    async bulkUpsertQuestions(questions) {
+        if (questions.length === 0) {
+            return { success: true, created: 0, updated: 0 };
+        }
+        const db = this.getDb();
+        const now = new Date();
+        const prepared = questions.map((q) => ({
+            ...q,
+            createdAt: now,
+            updatedAt: now,
+        }));
+        try {
+            const result = await db
+                .insert(remote_schema_js_1.remoteSchema.questions)
+                .values(prepared)
+                .onConflictDoUpdate({
+                target: [
+                    remote_schema_js_1.remoteSchema.questions.subjectId,
+                    remote_schema_js_1.remoteSchema.questions.questionOrder,
+                ],
+                set: (0, drizzle_js_1.buildExcludedSetClause)(remote_schema_js_1.remoteSchema.questions, [
+                    "text",
+                    "options",
+                    "answer",
+                    "explanation",
+                    "updatedAt",
+                ]),
+            })
+                .returning({
+                createdAt: remote_schema_js_1.remoteSchema.questions.createdAt,
+                updatedAt: remote_schema_js_1.remoteSchema.questions.updatedAt,
+            });
+            const subjectCode = prepared[0].subjectCode;
+            try {
+                await this.updateSubjectQuestionCount(subjectCode);
+            }
+            catch (error) {
+                console.warn(`Failed to update question count for subject ${subjectCode}:`, error);
+            }
+            let created = 0;
+            let updated = 0;
+            for (const row of result) {
+                if (row.createdAt.getTime() === row.updatedAt.getTime()) {
+                    created++;
+                }
+                else {
+                    updated++;
+                }
+            }
+            return { success: true, created, updated };
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error("❌ Failed to bulk upsert questions:", message);
+            return {
+                success: false,
+                created: 0,
+                updated: 0,
+                error: message,
             };
         }
     }
@@ -284,6 +453,39 @@ class RemoteDatabaseService {
     async syncQuizAttempt(attempt) {
         const db = this.getDb();
         try {
+            // Validate required fields before syncing
+            if (!attempt.userId || !attempt.subjectId) {
+                console.warn(`Quiz attempt ${attempt.id} has missing required fields (userId: ${attempt.userId}, subjectId: ${attempt.subjectId}), skipping sync`);
+                throw new Error(`Invalid quiz attempt: missing userId or subjectId`);
+            }
+            if (!attempt.totalQuestions || attempt.totalQuestions <= 0) {
+                console.warn(`Quiz attempt ${attempt.id} has invalid totalQuestions (${attempt.totalQuestions}), skipping sync`);
+                throw new Error(`Invalid quiz attempt: invalid totalQuestions`);
+            }
+            const safeDate = (dateString) => {
+                if (!dateString)
+                    return null;
+                try {
+                    const date = new Date(dateString);
+                    return isNaN(date.getTime()) ? null : date;
+                }
+                catch {
+                    return null;
+                }
+            };
+            let startedAt = safeDate(attempt.startedAt);
+            // Handle invalid or missing startedAt timestamps
+            if (!startedAt) {
+                console.warn(`Quiz attempt ${attempt.id} has invalid startedAt (${attempt.startedAt}), using updatedAt or current time as fallback`);
+                // Try to use updatedAt as fallback
+                startedAt = safeDate(attempt.updatedAt);
+                // If updatedAt is also invalid, use current time
+                if (!startedAt) {
+                    startedAt = new Date();
+                    console.warn(`Quiz attempt ${attempt.id} also has invalid updatedAt, using current time`);
+                }
+            }
+            const submittedAt = safeDate(attempt.submittedAt);
             await db
                 .insert(remote_schema_js_1.remoteSchema.quizAttempts)
                 .values({
@@ -294,10 +496,8 @@ class RemoteDatabaseService {
                 score: attempt.score,
                 totalQuestions: attempt.totalQuestions,
                 submitted: attempt.submitted,
-                startedAt: new Date(attempt.startedAt),
-                submittedAt: attempt.submittedAt
-                    ? new Date(attempt.submittedAt)
-                    : null,
+                startedAt: startedAt,
+                submittedAt: submittedAt,
                 sessionDuration: attempt.sessionDuration,
             })
                 .onConflictDoUpdate({
@@ -306,9 +506,7 @@ class RemoteDatabaseService {
                     answers: attempt.answers ? JSON.parse(attempt.answers) : null,
                     score: attempt.score,
                     submitted: attempt.submitted,
-                    submittedAt: attempt.submittedAt
-                        ? new Date(attempt.submittedAt)
-                        : null,
+                    submittedAt: submittedAt,
                     sessionDuration: attempt.sessionDuration,
                     updatedAt: new Date(),
                 },
@@ -342,27 +540,9 @@ class RemoteDatabaseService {
             ]);
             console.log(`RemoteDatabaseService: Pulled ${users.length} users, ${subjects.length} subjects, ${questions.length} questions`);
             return {
-                users: users.map((user) => ({
-                    ...user,
-                    // Convert for local schema compatibility
-                    createdAt: user.createdAt.toISOString(),
-                    updatedAt: user.updatedAt.toISOString(),
-                    ...(user.lastLogin && {
-                        lastLogin: user.lastLogin.toISOString(),
-                    }),
-                })),
-                subjects: subjects.map((subject) => ({
-                    ...subject,
-                    createdAt: subject.createdAt.toISOString(),
-                    updatedAt: subject.updatedAt.toISOString(),
-                })),
-                questions: questions.map((question) => ({
-                    ...question,
-                    // Convert JSONB options to string for local SQLite
-                    options: JSON.stringify(question.options),
-                    createdAt: question.createdAt.toISOString(),
-                    updatedAt: question.updatedAt.toISOString(),
-                })),
+                users,
+                subjects,
+                questions,
             };
         }
         catch (error) {
@@ -467,12 +647,123 @@ class RemoteDatabaseService {
             };
         }
     }
-    async cleanup() {
-        if (this.neonManager) {
-            await this.neonManager.close();
-            this.neonManager = null;
+    /**
+     * User regulation methods for admin control
+     */
+    /**
+     * Toggle active state for all users
+     */
+    async toggleAllUsersActive(isActive) {
+        try {
+            const db = this.getDb();
+            const result = await db
+                .update(remote_schema_js_1.remoteSchema.users)
+                .set({
+                isActive,
+                updatedAt: new Date(),
+            })
+                .returning({ id: remote_schema_js_1.remoteSchema.users.id });
+            return {
+                success: true,
+                updatedCount: result.length,
+            };
         }
-        this.db = null;
+        catch (error) {
+            console.error("RemoteDatabaseService: Error toggling all users active state:", error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+            };
+        }
+    }
+    /**
+     * Toggle active state for a specific user
+     */
+    async toggleUserActive(studentCode, isActive) {
+        try {
+            const db = this.getDb();
+            const result = await db
+                .update(remote_schema_js_1.remoteSchema.users)
+                .set({
+                isActive,
+                updatedAt: new Date(),
+            })
+                .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.users.studentCode, studentCode))
+                .returning({ id: remote_schema_js_1.remoteSchema.users.id });
+            return {
+                success: true,
+                updated: result.length > 0,
+            };
+        }
+        catch (error) {
+            console.error("RemoteDatabaseService: Error toggling user active state:", error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+            };
+        }
+    }
+    /**
+     * Change user PIN
+     */
+    async changeUserPin(studentCode, newPin) {
+        try {
+            const db = this.getDb();
+            // Hash the new PIN
+            const bcrypt = await Promise.resolve().then(() => __importStar(require("bcryptjs")));
+            const hashedPin = await bcrypt.hash(newPin, 10);
+            const result = await db
+                .update(remote_schema_js_1.remoteSchema.users)
+                .set({
+                passwordHash: hashedPin,
+                updatedAt: new Date(),
+            })
+                .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.users.studentCode, studentCode))
+                .returning({ id: remote_schema_js_1.remoteSchema.users.id });
+            return {
+                success: true,
+                updated: result.length > 0,
+            };
+        }
+        catch (error) {
+            console.error("RemoteDatabaseService: Error changing user PIN:", error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+            };
+        }
+    }
+    /**
+     * Update user last login timestamp
+     */
+    async updateUserLastLogin(studentCode) {
+        try {
+            const db = this.getDb();
+            await db
+                .update(remote_schema_js_1.remoteSchema.users)
+                .set({
+                lastLogin: new Date(),
+                updatedAt: new Date(),
+            })
+                .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.users.studentCode, studentCode));
+        }
+        catch (error) {
+            console.error("RemoteDatabaseService: Error updating user last login:", error);
+        }
+    }
+    /**
+     * Cleanup database connections
+     */
+    async cleanup() {
+        try {
+            if (this.neonManager) {
+                await this.neonManager.close();
+            }
+            this.db = null;
+        }
+        catch (error) {
+            console.error("RemoteDatabaseService: Cleanup error:", error);
+        }
     }
     // ===== ADMIN OPERATIONS =====
     /**
@@ -576,15 +867,16 @@ class RemoteDatabaseService {
             orderBy: (users, { asc }) => asc(users.studentCode),
         });
         return usersWithAttempts.map((user) => {
-            const [firstName, ...lastNameParts] = user.name.split(" ");
             return {
                 id: user.id,
                 studentCode: user.studentCode,
-                firstName: firstName || "",
-                lastName: lastNameParts.join(" ") || "",
+                firstName: user.name.split(" ")[0] || user.name,
+                lastName: user.name.split(" ").slice(1).join(" ") || "",
                 className: user.class,
                 gender: user.gender,
-                pin: "****",
+                pin: user.passwordHash,
+                isActive: user.isActive ?? true,
+                lastLogin: user.lastLogin ? user.lastLogin.toISOString() : null,
                 createdAt: user.createdAt.toISOString(),
                 updatedAt: user.updatedAt.toISOString(),
                 quizAttempts: user.quizAttempts.map((attempt) => ({
@@ -860,6 +1152,29 @@ class RemoteDatabaseService {
                     ? error.message
                     : "Failed to delete quiz attempts",
             };
+        }
+    }
+    //TODO: Possible circular dependency
+    /**
+     * Get student credentials
+     */
+    async getStudentCredentials() {
+        try {
+            const { ALL_STUDENTS } = await Promise.resolve().then(() => __importStar(require("../constants/students.js")));
+            return ALL_STUDENTS.map((student, index) => {
+                const pin = String(100000 + (index + 1)).padStart(6, "1");
+                return {
+                    name: student.name,
+                    studentCode: student.studentCode,
+                    pin: pin,
+                    class: student.class,
+                    gender: student.gender,
+                };
+            });
+        }
+        catch (error) {
+            console.error("Get student credentials error:", error);
+            return [];
         }
     }
 }

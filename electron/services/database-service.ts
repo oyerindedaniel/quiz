@@ -26,6 +26,7 @@ import {
   CreateAdminData,
   AdminCreationResult,
   SyncOperationType,
+  UserSeedData,
 } from "../../src/types/app.js";
 import { SyncTrigger } from "../../src/lib/sync/sync-engine.js";
 
@@ -563,15 +564,17 @@ export class MainDatabaseService {
   }
 
   /**
-   * Delete quiz attempts for admin operations
-   * This allows users to retake tests after admin intervention
+   * Delete quiz attempts for a user and subject (Admin operation via remote)
    */
   async deleteQuizAttempts(
     studentCode: string,
     subjectCode: string
   ): Promise<{ success: boolean; error?: string; deletedCount?: number }> {
-    if (!this.remoteDb) {
-      throw new Error("Remote database not available");
+    if (!this.remoteDb || !this.remoteDb.isConnected()) {
+      return {
+        success: false,
+        error: "Remote database connection not available",
+      };
     }
 
     return this.remoteDb.deleteQuizAttempts(studentCode, subjectCode);
@@ -737,7 +740,6 @@ export class MainDatabaseService {
             continue;
           }
 
-          // Use transaction for bulk operations on this subject
           await this.localDb.transaction(async (tx) => {
             // If replace mode, delete all existing questions for this subject first
             if (replaceExisting) {
@@ -892,6 +894,170 @@ export class MainDatabaseService {
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown sync error",
+      };
+    }
+  }
+
+  /**
+   * Get student credentials (for admin panel)
+   */
+  async getStudentCredentials(): Promise<Array<UserSeedData>> {
+    if (!this.remoteDb || !this.remoteDb.isConnected()) {
+      throw new Error("Remote database connection not available");
+    }
+
+    return this.remoteDb.getStudentCredentials();
+  }
+
+  /**
+   * Update subject question count for a specific subject
+   */
+  async updateSubjectQuestionCount(subjectCode: string): Promise<void> {
+    try {
+      await this.localDb.updateSubjectQuestionCount(subjectCode);
+      console.log(`Updated local question count for subject ${subjectCode}`);
+    } catch (error) {
+      console.error(
+        `Failed to update question count for subject ${subjectCode}:`,
+        error
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * User regulation methods for admin control (Local-first approach with remote sync)
+   */
+
+  /**
+   * Toggle active state for all users
+   */
+  async toggleAllUsersActive(
+    isActive: boolean
+  ): Promise<{ success: boolean; error?: string; updatedCount?: number }> {
+    try {
+      // Always update local database first
+      const localResult = await this.localDb.toggleAllUsersActive(isActive);
+
+      if (!localResult.success) {
+        return localResult;
+      }
+
+      // Try to sync with remote if available
+      if (this.remoteDb && this.isRemoteAvailable()) {
+        try {
+          const remoteResult = await this.remoteDb.toggleAllUsersActive(
+            isActive
+          );
+          console.log(
+            `MainDatabaseService: Synced toggle all users active (${isActive}) to remote database`
+          );
+        } catch (error) {
+          console.warn(
+            `MainDatabaseService: Failed to sync toggle all users active to remote:`,
+            error
+          );
+          // Don't fail the operation if remote sync fails
+        }
+      }
+
+      return localResult;
+    } catch (error) {
+      console.error(
+        "MainDatabaseService: Error toggling all users active state:",
+        error
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Toggle active state for a specific user
+   */
+  async toggleUserActive(
+    studentCode: string,
+    isActive: boolean
+  ): Promise<{ success: boolean; error?: string; updated?: boolean }> {
+    try {
+      const localResult = await this.localDb.toggleUserActive(
+        studentCode,
+        isActive
+      );
+
+      if (!localResult.success) {
+        return localResult;
+      }
+
+      if (this.remoteDb && this.isRemoteAvailable()) {
+        try {
+          const remoteResult = await this.remoteDb.toggleUserActive(
+            studentCode,
+            isActive
+          );
+          console.log(
+            `MainDatabaseService: Synced toggle user active (${studentCode}, ${isActive}) to remote database`
+          );
+        } catch (error) {
+          console.warn(
+            `MainDatabaseService: Failed to sync toggle user active to remote:`,
+            error
+          );
+        }
+      }
+
+      return localResult;
+    } catch (error) {
+      console.error(
+        "MainDatabaseService: Error toggling user active state:",
+        error
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Change user PIN
+   */
+  async changeUserPin(
+    studentCode: string,
+    newPin: string
+  ): Promise<{ success: boolean; error?: string; updated?: boolean }> {
+    try {
+      const localResult = await this.localDb.changeUserPin(studentCode, newPin);
+
+      if (!localResult.success) {
+        return localResult;
+      }
+
+      if (this.remoteDb && this.isRemoteAvailable()) {
+        try {
+          const remoteResult = await this.remoteDb.changeUserPin(
+            studentCode,
+            newPin
+          );
+          console.log(
+            `MainDatabaseService: Synced change user PIN (${studentCode}) to remote database`
+          );
+        } catch (error) {
+          console.warn(
+            `MainDatabaseService: Failed to sync change user PIN to remote:`,
+            error
+          );
+        }
+      }
+
+      return localResult;
+    } catch (error) {
+      console.error("MainDatabaseService: Error changing user PIN:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }

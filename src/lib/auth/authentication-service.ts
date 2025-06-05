@@ -1,13 +1,7 @@
-import { isElectron } from "../../utils/lib";
+import { isElectron } from "@/utils/lib";
 import { IPCDatabaseService } from "../services/ipc-database-service";
-import type {
-  AuthResult,
-  User,
-  Subject,
-  AdminAuthResult,
-  SessionData,
-} from "@/types/app";
-import type { RemoteAdmin } from "@/lib/database/remote-schema";
+import type { AuthResult, User, Subject, AdminAuthResult } from "@/types/app";
+import type { RemoteAdmin } from "../database/remote-schema";
 
 export class AuthenticationService {
   private static instance: AuthenticationService;
@@ -92,7 +86,7 @@ export class AuthenticationService {
   }
 
   /**
-   * Get current session from electron-store
+   * Get current local session from electron-store
    */
   async getCurrentSession(): Promise<{
     isAuthenticated: boolean;

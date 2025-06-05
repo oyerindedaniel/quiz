@@ -9,25 +9,18 @@ import { config } from "dotenv";
 config();
 
 import { UserSeedingService } from "../src/lib/auth/user-seeding-service";
-import { createNeonManager } from "../src/lib/database/neon";
+import { RemoteDatabaseService } from "../src/lib/database/remote-database-service";
 
 async function main() {
   console.log("🌱 Starting database seeding...\n");
 
-  const neonManager = createNeonManager();
+  const remoteDb = RemoteDatabaseService.getInstance();
 
   try {
-    console.log("📁 Initializing database...");
-
-    await neonManager.initialize();
-    console.log("✅ Database initialized\n");
-
-    const { RemoteDatabaseService } = await import(
-      "../src/lib/database/remote-database-service"
-    );
-    const remoteDb = RemoteDatabaseService.getInstance();
+    console.log("📁 Initializing remote database...");
     await remoteDb.initialize(process.env.NEON_DATABASE_URL!);
 
+    // Seed subjects
     console.log("📚 Creating subjects...");
     const userSeedingService = new UserSeedingService({ isRemote: true });
     const subjectResults = await userSeedingService.createSubjectsData();
@@ -35,7 +28,7 @@ async function main() {
     console.log("\n📊 Subject Seeding Results:");
     console.log("============================");
     console.log(`   ✅ Created: ${subjectResults.created}`);
-    console.log(`   ⏭️  Existing: ${subjectResults.existing}`);
+    console.log(`   ⏭️  Skipped: ${subjectResults.existing}`);
     console.log(`   ❌ Errors:  ${subjectResults.errors.length}`);
 
     if (subjectResults.errors.length > 0) {
@@ -67,6 +60,7 @@ async function main() {
       console.log(
         "   JSS3_STU_001, JSS3_STU_002, JSS3_STU_003, JSS3_STU_004, JSS3_STU_005, JSS3_STU_006, JSS3_STU_007"
       );
+
       console.log("\n📋 Subject Codes Generated:");
       console.log(
         "   BASIC5_MATH, BASIC5_ENG, BASIC5_BSC, BASIC5_SST, BASIC5_YOR"
@@ -90,17 +84,10 @@ async function main() {
     process.exit(1);
   } finally {
     try {
-      const { RemoteDatabaseService } = await import(
-        "../src/lib/database/remote-database-service"
-      );
-      const remoteDb = RemoteDatabaseService.getInstance();
       await remoteDb.cleanup();
     } catch (cleanupError) {
-      console.warn("Remote DB cleanup warning:", cleanupError);
+      console.warn("⚠️ Remote DB cleanup warning:", cleanupError);
     }
-
-    neonManager.close();
-    console.log("\n🔐 Database connection closed");
   }
 }
 

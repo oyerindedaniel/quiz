@@ -191,5 +191,36 @@ class IPCDatabaseService {
         this.checkElectronAPI();
         return window.electronAPI.remote.bulkCreateQuestions(questions);
     }
+    /**
+     * Get student credentials (for admin panel)
+     */
+    async getStudentCredentials() {
+        this.checkElectronAPI();
+        return window.electronAPI.admin.getStudentCredentials();
+    }
+    /**
+     * User regulation methods for admin control
+     */
+    /**
+     * Toggle active state for all users
+     */
+    async toggleAllUsersActive(isActive) {
+        this.checkElectronAPI();
+        return window.electronAPI.admin.toggleAllUsersActive(isActive);
+    }
+    /**
+     * Toggle active state for a specific user
+     */
+    async toggleUserActive(studentCode, isActive) {
+        this.checkElectronAPI();
+        return window.electronAPI.admin.toggleUserActive(studentCode, isActive);
+    }
+    /**
+     * Change user PIN
+     */
+    async changeUserPin(studentCode, newPin) {
+        this.checkElectronAPI();
+        return window.electronAPI.admin.changeUserPin(studentCode, newPin);
+    }
 }
 exports.IPCDatabaseService = IPCDatabaseService;

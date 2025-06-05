@@ -20,7 +20,8 @@ import type {
   SubjectWithStats,
   QuestionWithStats,
   AnalyticsData,
-} from "@/types/app";
+  UserSeedData,
+} from "../../types/app.js";
 import type { RemoteAdmin } from "../database/remote-schema.js";
 
 export class IPCDatabaseService {
@@ -336,5 +337,49 @@ export class IPCDatabaseService {
   ): Promise<{ success: boolean; created: number; error?: string }> {
     this.checkElectronAPI();
     return window.electronAPI.remote.bulkCreateQuestions(questions);
+  }
+
+  /**
+   * Get student credentials (for admin panel)
+   */
+  async getStudentCredentials(): Promise<Array<UserSeedData>> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.getStudentCredentials();
+  }
+
+  /**
+   * User regulation methods for admin control
+   */
+
+  /**
+   * Toggle active state for all users
+   */
+  async toggleAllUsersActive(
+    isActive: boolean
+  ): Promise<{ success: boolean; error?: string; updatedCount?: number }> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.toggleAllUsersActive(isActive);
+  }
+
+  /**
+   * Toggle active state for a specific user
+   */
+  async toggleUserActive(
+    studentCode: string,
+    isActive: boolean
+  ): Promise<{ success: boolean; error?: string; updated?: boolean }> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.toggleUserActive(studentCode, isActive);
+  }
+
+  /**
+   * Change user PIN
+   */
+  async changeUserPin(
+    studentCode: string,
+    newPin: string
+  ): Promise<{ success: boolean; error?: string; updated?: boolean }> {
+    this.checkElectronAPI();
+    return window.electronAPI.admin.changeUserPin(studentCode, newPin);
   }
 }

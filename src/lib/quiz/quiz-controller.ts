@@ -1,5 +1,5 @@
 import { IPCDatabaseService } from "../services/ipc-database-service";
-import { generateUUID } from "../../utils/lib";
+import { generateUUID } from "@/utils/lib";
 import type {
   Question,
   QuizAttempt,
@@ -16,6 +16,31 @@ export class QuizController {
 
   constructor() {
     this.ipcDb = new IPCDatabaseService();
+  }
+
+  /**
+   * Check if there's an existing incomplete attempt with progress
+   */
+  async hasIncompleteAttemptWithProgress(
+    userId: string,
+    subjectId: string
+  ): Promise<boolean> {
+    try {
+      const existingAttempt = await this.ipcDb.findIncompleteAttempt(
+        userId,
+        subjectId
+      );
+
+      if (!existingAttempt || !existingAttempt.answers) {
+        return false;
+      }
+
+      const answers = JSON.parse(existingAttempt.answers);
+      return Object.keys(answers).length > 0;
+    } catch (error) {
+      console.error("Failed to check for incomplete attempt:", error);
+      return false;
+    }
   }
 
   /**
@@ -224,31 +249,69 @@ export class QuizController {
   }
 
   /**
-   * Save answer for current question
+   * Update current question index to sync with external navigation
    */
-  async saveAnswer(selectedOption: string): Promise<AnswerResult> {
+  updateCurrentQuestionIndex(questionIndex: number): void {
+    if (!this.currentSession) return;
+
+    const { questions } = this.currentSession;
+    if (questionIndex >= 0 && questionIndex < questions.length) {
+      this.currentSession.currentQuestionIndex = questionIndex;
+    }
+  }
+
+  /**
+   * Sync current question index based on current question ID
+   */
+  syncCurrentQuestionIndex(currentQuestionId: string): void {
+    if (!this.currentSession) return;
+
+    const questionIndex = this.currentSession.questions.findIndex(
+      (q) => q.id === currentQuestionId
+    );
+
+    if (questionIndex !== -1) {
+      this.currentSession.currentQuestionIndex = questionIndex;
+    }
+  }
+
+  /**
+   * Get current question index in the raw questions array
+   */
+  getCurrentQuestionIndex(): number {
+    return this.currentSession?.currentQuestionIndex || 0;
+  }
+
+  /**
+   * Save answer for specific question by ID
+   */
+  async saveAnswerForQuestion(
+    questionId: string,
+    selectedOption: string
+  ): Promise<AnswerResult> {
     if (!this.currentSession) {
       return { success: false, error: "No active quiz session" };
     }
 
-    const currentQuestion = this.getCurrentQuestion();
-    if (!currentQuestion) {
-      return { success: false, error: "No current question" };
+    const question = this.currentSession.questions.find(
+      (q) => q.id === questionId
+    );
+    if (!question) {
+      return { success: false, error: "Question not found" };
     }
 
-    if (!["A", "B", "C", "D"].includes(selectedOption.toUpperCase())) {
+    if (!["A", "B", "C", "D", "E"].includes(selectedOption.toUpperCase())) {
       return { success: false, error: "Invalid answer option" };
     }
 
     try {
       await this.ipcDb.updateQuizAnswer(
         this.currentSession.attemptId,
-        currentQuestion.id,
+        questionId,
         selectedOption.toUpperCase()
       );
 
-      this.currentSession.answers[currentQuestion.id] =
-        selectedOption.toUpperCase();
+      this.currentSession.answers[questionId] = selectedOption.toUpperCase();
 
       await this.updateElapsedTime();
 
@@ -264,6 +327,22 @@ export class QuizController {
         error: "Failed to save answer. Please try again.",
       };
     }
+  }
+
+  /**
+   * Save answer for current question
+   */
+  async saveAnswer(selectedOption: string): Promise<AnswerResult> {
+    if (!this.currentSession) {
+      return { success: false, error: "No active quiz session" };
+    }
+
+    const currentQuestion = this.getCurrentQuestion();
+    if (!currentQuestion) {
+      return { success: false, error: "No current question" };
+    }
+
+    return this.saveAnswerForQuestion(currentQuestion.id, selectedOption);
   }
 
   /**

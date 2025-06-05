@@ -12,6 +12,7 @@ exports.debounce = debounce;
 exports.isElectron = isElectron;
 exports.sleep = sleep;
 exports.cn = cn;
+exports.serializeData = serializeData;
 const uuid_1 = require("uuid");
 const clsx_1 = require("clsx");
 const tailwind_merge_1 = require("tailwind-merge");
@@ -118,4 +119,26 @@ function sleep(ms) {
  */
 function cn(...inputs) {
     return (0, tailwind_merge_1.twMerge)((0, clsx_1.clsx)(inputs));
+}
+/**
+ * Recursively serializes all Date instances in the object into ISO strings.
+ *
+ * @param data - An object possibly containing Date values
+ * @returns A copy of the object with Dates stringified
+ */
+function serializeData(data) {
+    if (data instanceof Date) {
+        return data.toISOString();
+    }
+    if (Array.isArray(data)) {
+        return data.map(serializeData);
+    }
+    if (data !== null && typeof data === "object") {
+        const result = {};
+        for (const [key, value] of Object.entries(data)) {
+            result[key] = serializeData(value);
+        }
+        return result;
+    }
+    return data;
 }

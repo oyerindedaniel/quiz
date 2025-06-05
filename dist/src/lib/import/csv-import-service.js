@@ -26,7 +26,7 @@ class CSVImportService {
             failed: 0,
             errors: [],
             subjects: { created: 0, existing: 0 },
-            questions: { regular: 0, passages: 0, headers: 0 },
+            questions: { regular: 0, passages: 0, headers: 0, images: 0 },
         };
         try {
             const subjectCode = filename
@@ -69,30 +69,105 @@ class CSVImportService {
             }
         }
         const rows = [];
+        let currentQuestionText = "";
+        let isMultilineContent = false;
         for (let i = 1; i < lines.length; i++) {
             try {
-                const values = this.parseCSVLine(lines[i]);
-                if (values.length !== headers.length) {
-                    console.warn(`Row ${i + 1}: Column count mismatch, skipping`);
+                const lineContent = lines[i].trim();
+                if (!lineContent) {
                     continue;
                 }
-                const row = {
-                    "Subject Code": "",
-                    "Question Text": values[headers.indexOf("Question Text")] || "",
-                    "Option A": values[headers.indexOf("Option A")] || "",
-                    "Option B": values[headers.indexOf("Option B")] || "",
-                    "Option C": values[headers.indexOf("Option C")] || "",
-                    "Option D": values[headers.indexOf("Option D")] || "",
-                    "Correct Answer": values[headers.indexOf("Correct Answer")] || "",
-                    "Question Order": values[headers.indexOf("Question Order")] || i.toString(),
-                };
-                rows.push(row);
+                if (isMultilineContent) {
+                    currentQuestionText += "\n" + lineContent;
+                    try {
+                        const values = this.parseCSVLine(currentQuestionText);
+                        if (values.length === headers.length) {
+                            const row = this.createRowFromValues(headers, values, i);
+                            if (row) {
+                                rows.push(row);
+                            }
+                            currentQuestionText = "";
+                            isMultilineContent = false;
+                            continue;
+                        }
+                    }
+                    catch {
+                        continue;
+                    }
+                }
+                const values = this.parseCSVLine(lineContent);
+                if (values.length === headers.length) {
+                    // Normal row with correct column count
+                    const row = this.createRowFromValues(headers, values, i);
+                    if (row) {
+                        rows.push(row);
+                    }
+                }
+                else if (values.length < headers.length) {
+                    // Possible start of multiline content
+                    const questionText = values[headers.indexOf("Question Text")] || "";
+                    if (questionText.startsWith("[PASSAGE]") ||
+                        questionText.startsWith("[HEADER]") ||
+                        questionText.startsWith("[IMAGE]") ||
+                        questionText.includes("PASSAGE")) {
+                        currentQuestionText = lineContent;
+                        isMultilineContent = true;
+                    }
+                    else {
+                        console.warn(`Row ${i + 1}: Column count mismatch (${values.length} vs ${headers.length}), trying to fix malformed CSV line`);
+                        // Try to fix common CSV issues like unquoted commas in text
+                        const fixedLine = this.tryFixCSVLine(lineContent, headers.length);
+                        if (fixedLine) {
+                            const fixedValues = this.parseCSVLine(fixedLine);
+                            if (fixedValues.length === headers.length) {
+                                const row = this.createRowFromValues(headers, fixedValues, i);
+                                if (row) {
+                                    rows.push(row);
+                                    console.log(`Row ${i + 1}: Successfully fixed and parsed`);
+                                    continue;
+                                }
+                            }
+                        }
+                        console.warn(`Row ${i + 1}: Could not fix, skipping`);
+                    }
+                }
+                else {
+                    console.warn(`Row ${i + 1}: Too many columns (${values.length} vs ${headers.length}), skipping`);
+                }
             }
             catch (error) {
                 console.warn(`Row ${i + 1}: Parse error - ${error instanceof Error ? error.message : "Unknown error"}`);
             }
         }
         return rows;
+    }
+    /**
+     * Create a CSVRow object from parsed values
+     */
+    createRowFromValues(headers, values, rowIndex) {
+        try {
+            const row = {
+                "Subject Code": "",
+                "Question Text": values[headers.indexOf("Question Text")] || "",
+                "Option A": values[headers.indexOf("Option A")] || "",
+                "Option B": values[headers.indexOf("Option B")] || "",
+                "Option C": values[headers.indexOf("Option C")] || "",
+                "Option D": values[headers.indexOf("Option D")] || "",
+                "Correct Answer": values[headers.indexOf("Correct Answer")] || "",
+                "Question Order": values[headers.indexOf("Question Order")] ||
+                    (rowIndex + 1).toString(),
+            };
+            // Add Option E if it exists in headers
+            const optionEIndex = headers.indexOf("Option E");
+            if (optionEIndex !== -1) {
+                row["Option E"] = values[optionEIndex] || "";
+            }
+            return row;
+        }
+        catch (error) {
+            console.warn(`Failed to create row from values:`, error);
+            return null;
+        }
     }
     /**
      * Parse a single CSV line, handling quoted values and embedded commas
@@ -117,7 +192,6 @@ class CSVImportService {
                 }
             }
             else if (char === "," && !inQuotes) {
-                // Field separator
                 result.push(current);
                 current = "";
                 i++;
@@ -127,9 +201,56 @@ class CSVImportService {
                 i++;
             }
         }
-        // Add the last field
         result.push(current);
         return result;
+    }
+    /**
+     * Try to fix common CSV formatting issues
+     */
+    tryFixCSVLine(line, expectedColumns) {
+        try {
+            // Clean the line first - remove any BOM, extra whitespace, etc.
+            let fixedLine = line.trim();
+            // Remove BOM if present
+            if (fixedLine.charCodeAt(0) === 0xfeff) {
+                fixedLine = fixedLine.slice(1);
+            }
+            // Split by comma first to see what we're working with
+            const parts = fixedLine.split(",");
+            if (parts.length <= expectedColumns) {
+                return null; // Can't fix if we don't have enough parts
+            }
+            // Method 1: Fix date patterns with commas
+            // Match date patterns with commas (day month, year)
+            const datePattern = /(\b\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+,\s*\d{4})/g;
+            fixedLine = fixedLine.replace(datePattern, '"$1"');
+            // Verify the fix worked
+            let fixedParts = this.parseCSVLine(fixedLine);
+            if (fixedParts.length === expectedColumns) {
+                return fixedLine;
+            }
+            // Method 2: Try to fix by removing trailing empty columns
+            if (parts.length > expectedColumns) {
+                const trimmedParts = parts.slice(0, expectedColumns);
+                const trimmedLine = trimmedParts.join(",");
+                fixedParts = this.parseCSVLine(trimmedLine);
+                if (fixedParts.length === expectedColumns) {
+                    return trimmedLine;
+                }
+            }
+            // Method 3: Look for patterns where there might be an extra comma at the end
+            if (fixedLine.endsWith(",")) {
+                const trimmedLine = fixedLine.slice(0, -1);
+                fixedParts = this.parseCSVLine(trimmedLine);
+                if (fixedParts.length === expectedColumns) {
+                    return trimmedLine;
+                }
+            }
+            return null;
+        }
+        catch (error) {
+            return null;
+        }
     }
     /**
      * Ensure subject exists, create if necessary
@@ -191,7 +312,7 @@ class CSVImportService {
         return subject.id;
     }
     /**
-     * Process all questions in bulk for better performance
+     * Process all questions in bulk
      */
     async processQuestionsInBulk(subjectId, subjectCode, rows, results) {
         const questionsToCreate = [];
@@ -205,7 +326,6 @@ class CSVImportService {
                     results.errors.push(`Row ${results.processed}: Question Text is required`);
                     continue;
                 }
-                // Detect question type
                 let questionType = "question";
                 let processedText = this.processTextContent(questionText);
                 if (questionText.startsWith("[PASSAGE]")) {
@@ -218,11 +338,19 @@ class CSVImportService {
                     processedText = this.processTextContent(questionText.replace(/^\[HEADER\]\s*/, ""));
                     results.questions.headers++;
                 }
+                else if (questionText.startsWith("[IMAGE]")) {
+                    questionType = "image";
+                    const imageContent = this.processImageContent(questionText.replace(/^\[IMAGE\]\s*/, ""));
+                    processedText = imageContent;
+                    results.questions.images++;
+                }
                 else {
                     results.questions.regular++;
                 }
-                // Create question data
-                if (questionType === "passage" || questionType === "header") {
+                if (questionType === "passage" ||
+                    questionType === "header" ||
+                    questionType === "image") {
+                    // Special questions (passage/header/image) - no validation needed
                     questionsToCreate.push({
                         id: (0, uuid_1.v4)(),
                         subjectId,
@@ -236,7 +364,6 @@ class CSVImportService {
                     });
                 }
                 else {
-                    // Regular question - validate first
                     this.validateRegularQuestion(row);
                     const options = [
                         this.processTextContent(row["Option A"]),
@@ -244,6 +371,9 @@ class CSVImportService {
                         this.processTextContent(row["Option C"]),
                         this.processTextContent(row["Option D"]),
                     ];
+                    if (row["Option E"]?.trim()) {
+                        options.push(this.processTextContent(row["Option E"]));
+                    }
                     questionsToCreate.push({
                         id: (0, uuid_1.v4)(),
                         subjectId,
@@ -270,13 +400,13 @@ class CSVImportService {
         }
     }
     /**
-     * Bulk create questions for better performance
+     * Bulk create questions
      */
     async bulkCreateQuestions(questions) {
         try {
             if (this.isRemote) {
-                await this.remoteDb.bulkCreateQuestions(questions);
-                console.log(`CSVImportService: Successfully bulk created ${questions.length} questions in remote database`);
+                await this.remoteDb.bulkUpsertQuestions(questions);
+                console.log(`CSVImportService: Successfully bulk upserted ${questions.length} questions in remote database`);
             }
             else {
                 await this.ipcDb.bulkCreateQuestions(questions);
@@ -287,6 +417,37 @@ class CSVImportService {
             console.error(`CSVImportService: Error in bulk create questions:`, error);
             throw error;
         }
+    }
+    /**
+     * Process image content to extract URL and position
+     */
+    processImageContent(imageText) {
+        // Expected format: "position:up\nhttps://example.com/image.jpg"
+        // or "position:down\nhttps://example.com/image.jpg"
+        const lines = imageText
+            .trim()
+            .split("\n")
+            .map((line) => line.trim());
+        let position = "up";
+        let imageUrl = "";
+        for (const line of lines) {
+            if (line.startsWith("position:")) {
+                const pos = line.replace("position:", "").trim().toLowerCase();
+                if (pos === "up" || pos === "down") {
+                    position = pos;
+                }
+            }
+            else if (line.startsWith("http://") || line.startsWith("https://")) {
+                imageUrl = line;
+            }
+        }
+        if (!imageUrl) {
+            throw new Error("Image URL is required for [IMAGE] blocks");
+        }
+        if (position !== "up" && position !== "down") {
+            throw new Error('Image position must be either "up" or "down"');
+        }
+        return `position:${position}\n${imageUrl}`;
     }
     /**
      * Process text content to preserve underline markers
@@ -314,8 +475,12 @@ class CSVImportService {
             }
         }
         const correctAnswer = row["Correct Answer"].toUpperCase().trim();
-        if (!["A", "B", "C", "D"].includes(correctAnswer)) {
-            throw new Error("Correct Answer must be A, B, C, or D");
+        const hasOptionE = row["Option E"]?.trim();
+        const validAnswers = hasOptionE
+            ? ["A", "B", "C", "D", "E"]
+            : ["A", "B", "C", "D"];
+        if (!validAnswers.includes(correctAnswer)) {
+            throw new Error(`Correct Answer must be ${validAnswers.join(", ")}${hasOptionE ? "" : ". Add Option E to use answer E"}`);
         }
     }
     /**

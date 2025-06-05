@@ -42,6 +42,7 @@ exports.BASIC5_STUDENTS = [
     { name: "OLANIYI MICHAEL OLAMIDE", gender: "MALE", class: "BASIC5" },
     { name: "OJIKUTU PRECIOUS AYOMIDE", gender: "FEMALE", class: "BASIC5" },
     { name: "ADEKOLA DANIEL OLUWADARASIMI", gender: "MALE", class: "BASIC5" },
+    { name: "OYERINDE DANIEL", gender: "MALE", class: "BASIC5" },
 ];
 /**
  * SS 2 Class Student List
@@ -68,6 +69,7 @@ exports.JSS3_STUDENTS = [
     },
     { name: "OLOJU DOYINSOLA ABIGAEL", gender: "FEMALE", class: "JSS3" },
     { name: "CHINEDU PRECIOUS CHIDIMMA", gender: "FEMALE", class: "JSS3" },
+    { name: "OYERINDE DANIEL", gender: "MALE", class: "JSS3" },
 ];
 /**
  * Generate student codes with class prefix

@@ -87,7 +87,7 @@ export default function HomePage() {
         onClose={() => setIsAdminModalOpen(false)}
       />
 
-      <div className="fixed bottom-4 right-4 opacity-10 hover:opacity-50 transition-opacity">
+      <div className="fixed flex gap-2 bottom-4 right-4 opacity-100 hover:opacity-50 transition-opacity">
         <p className="text-xs text-gray-400 font-mono">
           Ctrl+Shift+A | Ctrl+Shift+S
         </p>

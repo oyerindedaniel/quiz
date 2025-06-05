@@ -6,8 +6,6 @@ exports.createNeonManager = createNeonManager;
 const node_postgres_1 = require("drizzle-orm/node-postgres");
 const pg_1 = require("pg");
 const remote_schema_js_1 = require("./remote-schema.js");
-const dotenv_1 = require("dotenv");
-(0, dotenv_1.config)();
 class NeonManager {
     constructor(connectionString) {
         this.db = null;
@@ -39,8 +37,8 @@ class NeonManager {
                 connectionString: this.connectionString,
                 max: 3,
                 min: 1,
-                idleTimeoutMillis: 10000,
-                connectionTimeoutMillis: 5000,
+                // idleTimeoutMillis: 10000,
+                // connectionTimeoutMillis: 5000,
                 ssl: {
                     rejectUnauthorized: false,
                 },

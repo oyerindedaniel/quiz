@@ -23,8 +23,7 @@
       "@/components/*": ["./src/components/*"],
       "@/lib/*": ["./src/lib/*"],
       "@/types/*": ["./src/types/*"],
-      "@/app/*": ["./src/app/*"],
-      "@/hooks/*": ["./src/hooks/*"]
+      "@/app/*": ["./src/app/*"]
     },
     "target": "ES2020",
     "forceConsistentCasingInFileNames": true

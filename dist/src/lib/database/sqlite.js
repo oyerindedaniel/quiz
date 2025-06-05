@@ -75,7 +75,6 @@ class SQLiteManager {
             throw new Error("SQLite instance not available");
         }
         this.sqlite.pragma("foreign_keys = ON");
-        // Create tables using raw SQL (as better-sqlite3 doesn't have migrations built-in)
         const createTableQueries = [
             // Users table
             `CREATE TABLE IF NOT EXISTS users (
@@ -83,20 +82,21 @@ class SQLiteManager {
         name TEXT NOT NULL,
         student_code TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
-        class TEXT NOT NULL CHECK (class IN ('SS2', 'JSS3')),
+        class TEXT NOT NULL CHECK (class IN ('SS2', 'JSS3', 'BASIC5')),
         gender TEXT NOT NULL CHECK (gender IN ('MALE', 'FEMALE')),
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         last_synced TEXT,
-        is_active INTEGER DEFAULT 1
+        is_active INTEGER DEFAULT 1,
+        last_login TEXT
       )`,
             // Subjects table
             `CREATE TABLE IF NOT EXISTS subjects (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
         subject_code TEXT UNIQUE NOT NULL,
         description TEXT,
-        class TEXT NOT NULL CHECK (class IN ('SS2', 'JSS3')),
+        class TEXT NOT NULL CHECK (class IN ('SS2', 'JSS3', 'BASIC5')),
         total_questions INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -104,56 +104,66 @@ class SQLiteManager {
       )`,
             // Questions table
             `CREATE TABLE IF NOT EXISTS questions (
-        id TEXT PRIMARY KEY,
-        subject_id TEXT NOT NULL,
-        text TEXT NOT NULL,
-        options TEXT NOT NULL,
-        answer TEXT NOT NULL,
-        difficulty_level INTEGER DEFAULT 1,
-        question_order INTEGER,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_active INTEGER DEFAULT 1,
-        FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+         id TEXT PRIMARY KEY,
+  subject_id TEXT NOT NULL,
+  subject_code TEXT NOT NULL,
+  text TEXT NOT NULL,
+  options TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  question_order INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  explanation TEXT,
+  is_active INTEGER DEFAULT 1,
+  FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
       )`,
             // Quiz attempts table
             `CREATE TABLE IF NOT EXISTS quiz_attempts (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        subject_id TEXT NOT NULL,
-        answers TEXT,
-        score INTEGER,
-        total_questions INTEGER NOT NULL,
-        submitted INTEGER DEFAULT 0,
-        synced INTEGER DEFAULT 0,
-        started_at TEXT NOT NULL,
-        submitted_at TEXT,
-        updated_at TEXT NOT NULL,
-        sync_attempted_at TEXT,
-        sync_error TEXT,
-        session_duration INTEGER,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+         id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  subject_id TEXT NOT NULL,
+  answers TEXT,
+  score INTEGER,
+  total_questions INTEGER NOT NULL,
+  submitted INTEGER DEFAULT 0,
+  synced INTEGER DEFAULT 0,
+  started_at TEXT NOT NULL,
+  submitted_at TEXT,
+  updated_at TEXT NOT NULL,
+  sync_attempted_at TEXT,
+  sync_error TEXT,
+  session_duration INTEGER,
+  elapsed_time INTEGER DEFAULT 0,
+  last_active_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
       )`,
             // Sync log table
             `CREATE TABLE IF NOT EXISTS sync_log (
         id TEXT PRIMARY KEY,
-        operation_type TEXT NOT NULL,
-        table_name TEXT NOT NULL,
-        record_id TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('success', 'failed', 'pending')),
-        error_message TEXT,
-        attempted_at TEXT NOT NULL,
-        completed_at TEXT
+  operation_type TEXT NOT NULL,
+  table_name TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failed', 'pending')),
+  error_message TEXT,
+  attempted_at TEXT NOT NULL,
+  completed_at TEXT
+      )`,
+            // Sync timestamps table
+            `CREATE TABLE IF NOT EXISTS sync_timestamps (
+       table_name TEXT PRIMARY KEY,
+  last_pull_sync TEXT,
+  last_push_sync TEXT,
+  last_full_sync TEXT
       )`,
         ];
-        // Create indexes
         const createIndexQueries = [
             "CREATE INDEX IF NOT EXISTS idx_users_student_code ON users(student_code)",
             "CREATE INDEX IF NOT EXISTS idx_users_class ON users(class)",
             "CREATE INDEX IF NOT EXISTS idx_subjects_subject_code ON subjects(subject_code)",
             "CREATE INDEX IF NOT EXISTS idx_subjects_class ON subjects(class)",
             "CREATE INDEX IF NOT EXISTS idx_questions_subject_id ON questions(subject_id)",
+            "CREATE INDEX IF NOT EXISTS idx_questions_subject_code ON questions(subject_code)",
             "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user_id ON quiz_attempts(user_id)",
             "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_subject_id ON quiz_attempts(subject_id)",
             "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_submitted ON quiz_attempts(submitted)",

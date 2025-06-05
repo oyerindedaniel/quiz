@@ -12,13 +12,13 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { UserSeedingService } from "@/lib/auth/user-seeding-service";
+import { IPCDatabaseService } from "@/lib/services/ipc-database-service";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
 import { useAdminData } from "@/hooks/use-admin-data";
 import { useFilteredData } from "@/hooks/use-filtered-data";
 import { toast } from "sonner";
 import { Eye, EyeOff, Copy, Download, Search } from "lucide-react";
-import type { UserSeedData, Class } from "@/types/app";
+import type { Class } from "@/types/app";
 
 export function UserCredentialsClient() {
   const { admin, isLoading: authLoading } = useAdminAuth();
@@ -31,8 +31,8 @@ export function UserCredentialsClient() {
     refresh,
   } = useAdminData(
     async () => {
-      const userSeedingService = new UserSeedingService();
-      return userSeedingService.getStudentCredentials();
+      const ipcDbService = new IPCDatabaseService();
+      return ipcDbService.getStudentCredentials();
     },
     { autoRefresh: false }
   );
@@ -49,7 +49,7 @@ export function UserCredentialsClient() {
     {
       searchFields: ["name", "studentCode"],
       customFilters: {
-        class: (item: UserSeedData, value: Class | "ALL") =>
+        class: (item, value: Class | "ALL") =>
           value === "ALL" || item.class === value,
       },
     },

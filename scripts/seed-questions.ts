@@ -11,21 +11,17 @@ config();
 
 import { CSVImportService } from "../src/lib/import/csv-import-service";
 import { RemoteDatabaseService } from "../src/lib/database/remote-database-service";
-import { createNeonManager } from "../src/lib/database/neon";
 import * as fs from "fs/promises";
 import * as path from "path";
 
 async function main() {
   console.log("📚 Starting remote question seeding...\n");
 
-  const neonManager = createNeonManager();
+  const remoteDb = RemoteDatabaseService.getInstance();
 
   try {
     console.log("📁 Initializing remote database...");
-    await neonManager.initialize();
-    console.log("✅ Remote database initialized\n");
 
-    const remoteDb = RemoteDatabaseService.getInstance();
     await remoteDb.initialize(process.env.NEON_DATABASE_URL!);
 
     let totalQuestionsSeeded = 0;
@@ -121,7 +117,7 @@ async function main() {
     }
     process.exit(1);
   } finally {
-    neonManager.close();
+    remoteDb.cleanup();
     console.log("\n🔐 Database connection closed");
   }
 }

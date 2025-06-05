@@ -15,8 +15,6 @@ import { IPCDatabaseService } from "@/lib/services/ipc-database-service";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
 import type { Gender, Class } from "@/lib/database/remote-schema";
 
-const dbService = new IPCDatabaseService();
-
 interface CreateUserData {
   name: string;
   studentCode: string;
@@ -38,6 +36,8 @@ export function CreateUserClient() {
   const [deleteSuccess, setDeleteSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const ipcDb = new IPCDatabaseService();
 
   const [createFormData, setCreateFormData] = useState<CreateUserData>({
     name: "",
@@ -72,7 +72,7 @@ export function CreateUserClient() {
     setSuccess(false);
 
     try {
-      await dbService.createUser({
+      await ipcDb.createUser({
         id: crypto.randomUUID(),
         name: createFormData.name,
         studentCode: createFormData.studentCode,
@@ -114,7 +114,7 @@ export function CreateUserClient() {
     setDeleteSuccess(false);
 
     try {
-      const result = await dbService.deleteLocalQuizAttempts(
+      const result = await ipcDb.deleteLocalQuizAttempts(
         deleteFormData.studentCode,
         deleteFormData.subjectCode
       );

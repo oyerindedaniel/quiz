@@ -7,8 +7,6 @@ import { IPCDatabaseService } from "@/lib/services/ipc-database-service";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
 import type { ImportResult } from "@/types/app";
 
-const dbService = new IPCDatabaseService();
-
 export function ImportClient() {
   const { admin, isLoading } = useAdminAuth();
   const [isUploading, setIsUploading] = useState(false);
@@ -16,6 +14,8 @@ export function ImportClient() {
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const ipcDb = new IPCDatabaseService();
 
   const uploadCSV = async (csvContent: string, filename?: string) => {
     if (!admin) {
@@ -29,7 +29,7 @@ export function ImportClient() {
 
     try {
       if (filename) {
-        const result = await dbService.importCSVQuestions(csvContent);
+        const result = await ipcDb.importCSVQuestions(csvContent);
         setUploadResult(result);
       } else {
         setError("Filename is required to determine subject code");
@@ -122,7 +122,6 @@ export function ImportClient() {
         </p>
       </div>
 
-      {/* Upload Section */}
       <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
         <div className="bg-brand-50 px-6 py-4 border-b border-brand-200">
           <div className="flex items-center space-x-2">
@@ -149,7 +148,6 @@ export function ImportClient() {
         </div>
 
         <div className="p-6">
-          {/* Drag and Drop Area */}
           <div
             className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
               dragOver
@@ -196,7 +194,6 @@ export function ImportClient() {
             />
           </div>
 
-          {/* Upload Progress */}
           {isUploading && (
             <div className="mt-6">
               <div className="flex items-center space-x-2">
@@ -208,7 +205,6 @@ export function ImportClient() {
             </div>
           )}
 
-          {/* Error Display */}
           {error && (
             <div className="mt-6">
               <Alert variant="destructive">
@@ -217,7 +213,6 @@ export function ImportClient() {
             </div>
           )}
 
-          {/* Success Result */}
           {uploadResult && (
             <div className="mt-6">
               <Alert className="border-green-200 bg-green-50 text-green-800">
@@ -265,7 +260,6 @@ export function ImportClient() {
         </div>
       </div>
 
-      {/* CSV Format Guide */}
       <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
         <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
           <div className="flex items-center space-x-2">
@@ -306,6 +300,9 @@ export function ImportClient() {
               </li>
               <li>
                 <strong>Option D:</strong> Fourth answer option
+              </li>
+              <li>
+                <strong>Option E:</strong> Fifth answer option (optional)
               </li>
               <li>
                 <strong>Correct Answer:</strong> The correct option (A, B, C, or

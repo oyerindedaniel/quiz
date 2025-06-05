@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Lifeville Quiz App",
+  title: "Lifeville Schools Quiz App",
   description: "Secure student assessment platform",
 };
 

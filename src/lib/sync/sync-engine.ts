@@ -10,9 +10,8 @@ import type {
   SyncStatus,
   SyncResult,
   QuizAttempt,
-  NewQuestion,
 } from "../../types/app.js";
-import { isElectron } from "../../utils/lib.js";
+import { isElectron, serializeData } from "../../utils/lib.js";
 
 export type SyncTrigger =
   | "startup"
@@ -37,6 +36,26 @@ export interface SyncConfiguration {
 
 interface CountResult {
   count: number;
+}
+
+// Raw database result interface (reflects actual SQLite column names)
+interface RawQuizAttemptResult {
+  id: string;
+  user_id: string;
+  subject_id: string;
+  answers: string | null;
+  score: number | null;
+  total_questions: number;
+  submitted: number; // SQLite boolean as integer
+  synced: number; // SQLite boolean as integer
+  started_at: string;
+  submitted_at: string | null;
+  updated_at: string;
+  sync_attempted_at: string | null;
+  sync_error: string | null;
+  session_duration: number | null;
+  elapsed_time: number;
+  last_active_at: string | null;
 }
 
 export class SyncEngine {
@@ -116,6 +135,8 @@ export class SyncEngine {
 
       this.setupEventListeners();
 
+      await this.fixInvalidTimestamps();
+
       await this.updateConnectivityStatus();
 
       // Start periodic sync if online
@@ -125,6 +146,11 @@ export class SyncEngine {
 
       this.isInitialized = true;
       console.log("SyncEngine: Initialization complete");
+
+      console.log(
+        "************************************************************"
+      );
+      console.log("SyncEngine: Triggering startup sync");
 
       await this.triggerSync("startup");
     } catch (error) {
@@ -302,6 +328,9 @@ export class SyncEngine {
 
   private async updateConnectivityStatus(): Promise<void> {
     const isOnline = await this.connectivityHandler.checkConnectivity();
+
+    console.log("SyncEngine: Update connectivity status", isOnline);
+
     this.currentSyncStatus.isOnline = isOnline;
 
     this.currentSyncStatus.localChanges = await this.countLocalChanges();
@@ -421,14 +450,37 @@ export class SyncEngine {
     console.log("SyncEngine: Performing reconnection sync");
 
     try {
+      let pushedRecords = 0;
+      let pulledRecords = 0;
+
       const queueResult = await this.syncQueue.processQueue(this.remoteDb!);
+      pushedRecords += queueResult.pushedRecords || 0;
 
       const pushResult = await this.pushAllLocalChanges();
+      pushedRecords += pushResult.pushedRecords || 0;
+
+      const userCount = await this.localDb.executeRawSQL(
+        "SELECT COUNT(*) as count FROM users"
+      );
+      const subjectCount = await this.localDb.executeRawSQL(
+        "SELECT COUNT(*) as count FROM subjects"
+      );
+
+      const hasUsers = (userCount[0] as CountResult)?.count > 0;
+      const hasSubjects = (subjectCount[0] as CountResult)?.count > 0;
+
+      if (!hasUsers || !hasSubjects) {
+        console.log(
+          "SyncEngine: Empty local database detected during reconnection, attempting initial data pull"
+        );
+        const pullResult = await this.pullFreshData();
+        pulledRecords += pullResult.pulledRecords || 0;
+      }
 
       return {
         success: true,
-        pushedRecords:
-          (queueResult.pushedRecords || 0) + (pushResult.pushedRecords || 0),
+        pushedRecords,
+        pulledRecords,
         note: "Reconnection sync completed",
       };
     } catch (error) {
@@ -503,12 +555,32 @@ export class SyncEngine {
       // Get unsynced submitted quiz attempts
       const unsyncedAttempts = (await this.localDb.executeRawSQL(
         `SELECT * FROM quiz_attempts WHERE synced = 0 AND submitted = 1 ORDER BY submitted_at ASC`
-      )) as QuizAttempt[];
+      )) as RawQuizAttemptResult[];
 
       let pushedRecords = 0;
 
-      for (const attempt of unsyncedAttempts) {
+      for (const rawAttempt of unsyncedAttempts) {
         try {
+          // Transform raw SQL result (snake_case) to proper QuizAttempt format (camelCase)
+          const attempt: QuizAttempt = {
+            id: rawAttempt.id,
+            userId: rawAttempt.user_id,
+            subjectId: rawAttempt.subject_id,
+            answers: rawAttempt.answers,
+            score: rawAttempt.score,
+            totalQuestions: rawAttempt.total_questions,
+            submitted: Boolean(rawAttempt.submitted),
+            synced: Boolean(rawAttempt.synced),
+            startedAt: rawAttempt.started_at,
+            submittedAt: rawAttempt.submitted_at,
+            updatedAt: rawAttempt.updated_at,
+            syncAttemptedAt: rawAttempt.sync_attempted_at,
+            syncError: rawAttempt.sync_error,
+            sessionDuration: rawAttempt.session_duration,
+            elapsedTime: rawAttempt.elapsed_time,
+            lastActiveAt: rawAttempt.last_active_at,
+          };
+
           await this.remoteDb.syncQuizAttempt(attempt);
 
           await this.localDb.runRawSQL(
@@ -528,7 +600,7 @@ export class SyncEngine {
           await this.logSyncOperation(
             "push",
             "quiz_attempts",
-            attempt.id,
+            rawAttempt.id,
             "failed",
             normalizeError(error)
           );
@@ -538,7 +610,7 @@ export class SyncEngine {
             [
               new Date().toISOString(),
               normalizeError(error).message,
-              attempt.id,
+              rawAttempt.id,
             ]
           );
         }
@@ -564,7 +636,7 @@ export class SyncEngine {
       // Get unsynced in-progress quiz attempts (important but not critical)
       const unsyncedAttempts = (await this.localDb.executeRawSQL(
         `SELECT * FROM quiz_attempts WHERE synced = 0 AND submitted = 0 AND answers IS NOT NULL`
-      )) as QuizAttempt[];
+      )) as RawQuizAttemptResult[];
 
       let pushedRecords = 0;
 
@@ -572,9 +644,29 @@ export class SyncEngine {
 
       for (let i = 0; i < unsyncedAttempts.length; i += batchSize) {
         const batch = unsyncedAttempts.slice(i, i + batchSize);
-
-        for (const attempt of batch) {
+        console.log("batch", batch);
+        for (const rawAttempt of batch) {
           try {
+            // Transform raw SQL result (snake_case) to proper QuizAttempt format (camelCase)
+            const attempt: QuizAttempt = {
+              id: rawAttempt.id,
+              userId: rawAttempt.user_id,
+              subjectId: rawAttempt.subject_id,
+              answers: rawAttempt.answers,
+              score: rawAttempt.score,
+              totalQuestions: rawAttempt.total_questions,
+              submitted: Boolean(rawAttempt.submitted),
+              synced: Boolean(rawAttempt.synced),
+              startedAt: rawAttempt.started_at,
+              submittedAt: rawAttempt.submitted_at,
+              updatedAt: rawAttempt.updated_at,
+              syncAttemptedAt: rawAttempt.sync_attempted_at,
+              syncError: rawAttempt.sync_error,
+              sessionDuration: rawAttempt.session_duration,
+              elapsedTime: rawAttempt.elapsed_time,
+              lastActiveAt: rawAttempt.last_active_at,
+            };
+
             await this.remoteDb.syncQuizAttempt(attempt);
 
             await this.localDb.runRawSQL(
@@ -593,7 +685,7 @@ export class SyncEngine {
             await this.logSyncOperation(
               "push",
               "quiz_attempts",
-              attempt.id,
+              rawAttempt.id,
               "failed",
               normalizeError(error)
             );
@@ -629,6 +721,8 @@ export class SyncEngine {
   }
 
   private async pullFreshData(): Promise<SyncResult> {
+    console.log("************************************************************");
+    console.log("SyncEngine: Performing pullFreshData");
     try {
       let pulledRecords = 0;
 
@@ -654,27 +748,37 @@ export class SyncEngine {
         };
       }
 
-      console.log(
-        "SyncEngine: Empty local database detected, attempting data sync..."
-      );
-
       // **Network Connectivity Assessment** - Try remote first, fallback to local seeding
       if (this.currentSyncStatus.isOnline && this.remoteDb) {
-        const remoteConnected = await this.remoteDb.checkConnection();
+        try {
+          const remoteConnected = await this.remoteDb.checkConnection();
 
-        if (remoteConnected) {
-          console.log(
-            "SyncEngine: Online and remote connected, performing remote data pull"
-          );
+          if (remoteConnected) {
+            console.log(
+              "SyncEngine: Online and remote connected, performing remote data pull"
+            );
 
-          try {
             // Pull users, subjects, and questions from remote
             const syncData = await this.remoteDb.pullLatestData();
 
             // Insert users
             for (const user of syncData.users) {
               try {
-                await this.localDb.createUser(user);
+                const localUser = {
+                  id: user.id,
+                  name: user.name,
+                  studentCode: user.studentCode,
+                  passwordHash: user.passwordHash,
+                  class: user.class,
+                  gender: user.gender,
+                  createdAt: user.createdAt.toISOString(),
+                  updatedAt: user.updatedAt.toISOString(),
+                  lastSynced: new Date().toISOString(),
+                  isActive: user.isActive,
+                  lastLogin: user.lastLogin?.toISOString() || null,
+                };
+
+                await this.localDb.createUser(serializeData(localUser));
                 pulledRecords++;
               } catch (error) {
                 console.warn("Failed to create user:", user.studentCode, error);
@@ -684,7 +788,19 @@ export class SyncEngine {
             // Insert subjects
             for (const subject of syncData.subjects) {
               try {
-                await this.localDb.createSubject(subject);
+                const localSubject = {
+                  id: subject.id,
+                  name: subject.name,
+                  subjectCode: subject.subjectCode,
+                  description: subject.description,
+                  class: subject.class,
+                  totalQuestions: subject.totalQuestions,
+                  createdAt: subject.createdAt.toISOString(),
+                  updatedAt: subject.updatedAt.toISOString(),
+                  isActive: subject.isActive,
+                };
+
+                await this.localDb.createSubject(serializeData(localSubject));
                 pulledRecords++;
               } catch (error) {
                 console.warn(
@@ -698,16 +814,24 @@ export class SyncEngine {
             // Insert questions
             for (const question of syncData.questions) {
               try {
-                const {
-                  createdAt,
-                  updatedAt,
-                  createdBy,
-                  explanation,
-                  ...rest
-                } = question;
-                await this.localDb.createQuestion(
-                  rest as Omit<NewQuestion, "createdAt" | "updatedAt">
-                );
+                const localQuestion = {
+                  id: question.id,
+                  subjectId: question.subjectId,
+                  subjectCode: question.subjectCode,
+                  text: question.text,
+                  options:
+                    typeof question.options === "string"
+                      ? question.options
+                      : JSON.stringify(question.options),
+                  answer: question.answer,
+                  questionOrder: question.questionOrder,
+                  createdAt: question.createdAt.toISOString(),
+                  updatedAt: question.updatedAt.toISOString(),
+                  explanation: question.explanation,
+                  isActive: question.isActive,
+                };
+
+                await this.localDb.createQuestion(serializeData(localQuestion));
                 pulledRecords++;
               } catch (error) {
                 console.warn("Failed to create question:", question.id, error);
@@ -722,15 +846,15 @@ export class SyncEngine {
               pulledRecords,
               note: "Initial data sync completed successfully from remote",
             };
-          } catch (remoteError) {
-            console.error(
-              "SyncEngine: Remote data pull failed, falling back to local seeding:",
-              remoteError
+          } else {
+            console.log(
+              "SyncEngine: Remote database connection failed, falling back to local seeding"
             );
           }
-        } else {
-          console.log(
-            "SyncEngine: Remote database connection failed, falling back to local seeding"
+        } catch (remoteError) {
+          console.error(
+            "SyncEngine: Remote data pull failed, falling back to local seeding:",
+            remoteError
           );
         }
       } else {
@@ -739,15 +863,15 @@ export class SyncEngine {
 
       console.log("SyncEngine: Performing automatic local database seeding...");
 
-      try {
-        if (!isElectron()) {
-          return {
-            success: false,
-            error: "Local seeding requires Electron environment",
-            note: "Cannot seed data in browser environment",
-          };
-        }
+      if (!isElectron()) {
+        return {
+          success: false,
+          error: "Local seeding requires Electron environment",
+          note: "Cannot seed data in browser environment",
+        };
+      }
 
+      try {
         const seedResult = await AutoSeedingService.performAutoSeeding();
 
         if (seedResult.success) {
@@ -820,6 +944,79 @@ export class SyncEngine {
         "SyncEngine: Failed to log sync operation:",
         normalizeError(logError).message
       );
+    }
+  }
+
+  /**
+   * Fix any existing quiz attempts with invalid timestamps
+   */
+  private async fixInvalidTimestamps(): Promise<void> {
+    try {
+      console.log(
+        "SyncEngine: Checking for invalid timestamps in quiz attempts..."
+      );
+
+      const invalidAttempts = await this.localDb.executeRawSQL(`
+        SELECT id, started_at, updated_at, user_id, subject_id 
+        FROM quiz_attempts 
+        WHERE started_at IS NULL 
+           OR started_at = '' 
+           OR started_at = 'undefined'
+           OR started_at = 'null'
+      `);
+
+      if (invalidAttempts.length > 0) {
+        console.log(
+          `SyncEngine: Found ${invalidAttempts.length} quiz attempts with invalid timestamps, fixing...`
+        );
+
+        const now = new Date().toISOString();
+
+        for (const attempt of invalidAttempts) {
+          const record = attempt as {
+            id: string;
+            started_at: string | null;
+            updated_at: string | null;
+          };
+
+          // Use updated_at if valid
+          let fixedStartedAt = now;
+          if (
+            record.updated_at &&
+            record.updated_at !== "undefined" &&
+            record.updated_at !== "null" &&
+            record.updated_at !== ""
+          ) {
+            try {
+              const updatedDate = new Date(record.updated_at);
+              if (!isNaN(updatedDate.getTime())) {
+                fixedStartedAt = record.updated_at;
+              }
+            } catch {
+              // Keep using current time
+            }
+          }
+
+          await this.localDb.runRawSQL(
+            `
+            UPDATE quiz_attempts 
+            SET started_at = ?, updated_at = ? 
+            WHERE id = ?
+          `,
+            [fixedStartedAt, now, record.id]
+          );
+
+          console.log(
+            `SyncEngine: Fixed timestamps for quiz attempt ${record.id}`
+          );
+        }
+
+        console.log("SyncEngine: Timestamp fix completed");
+      } else {
+        console.log("SyncEngine: No invalid timestamps found");
+      }
+    } catch (error) {
+      console.warn("SyncEngine: Failed to fix invalid timestamps:", error);
     }
   }
 }

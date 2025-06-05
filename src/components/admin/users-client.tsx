@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -20,8 +20,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useAdminData } from "@/hooks/use-admin-data";
 import { useFilteredData } from "@/hooks/use-filtered-data";
+import { useConnectivity } from "@/hooks/use-connectivity";
+import { format } from "date-fns";
 import {
   Search,
   RefreshCw,
@@ -32,30 +43,28 @@ import {
   Trophy,
   Clock,
   Target,
+  Power,
+  PowerOff,
+  Key,
+  Shield,
+  ShieldOff,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
+import { UserWithAttempts } from "@/types/app";
+import { IPCDatabaseService } from "@/lib/services/ipc-database-service";
 
-interface UserWithAttempts {
-  id: string;
-  studentCode: string;
-  firstName: string;
-  lastName: string;
-  className: string;
-  gender: string;
-  pin: string;
-  createdAt: string;
-  updatedAt: string;
-  quizAttempts: Array<{
-    id: string;
-    subjectId: string;
-    subjectName: string;
-    score: number;
-    completedAt: string;
-    sessionDuration: number;
-    totalQuestions: number;
-  }>;
-}
+const ipcDb = new IPCDatabaseService();
 
 export function UsersClient() {
+  const [changePinDialogOpen, setChangePinDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserWithAttempts | null>(
+    null
+  );
+  const [newPin, setNewPin] = useState("");
+  const [isTogglingUser, setIsTogglingUser] = useState<string | null>(null);
+  const [isTogglingAll, setIsTogglingAll] = useState(false);
+
   const {
     data: users,
     isLoading,
@@ -65,6 +74,8 @@ export function UsersClient() {
     autoRefresh: true,
     refreshInterval: 30000,
   });
+
+  // const connectivity = useConnectivity();
 
   const {
     filteredData: filteredUsers,
@@ -119,6 +130,105 @@ export function UsersClient() {
     return "bg-incorrect-100 text-incorrect-800 border-incorrect-200";
   };
 
+  const handleToggleAllUsers = async (isActive: boolean) => {
+    setIsTogglingAll(true);
+    try {
+      const { IPCDatabaseService } = await import(
+        "@/lib/services/ipc-database-service"
+      );
+      const ipcDb = new IPCDatabaseService();
+
+      const result = await ipcDb.toggleAllUsersActive(isActive);
+
+      if (result.success) {
+        await refresh();
+        console.log(
+          `Successfully ${isActive ? "activated" : "deactivated"} ${
+            result.updatedCount
+          } users`
+        );
+      } else {
+        console.error("Failed to toggle all users:", result.error);
+      }
+    } catch (error) {
+      console.error("Error toggling all users:", error);
+    } finally {
+      setIsTogglingAll(false);
+    }
+  };
+
+  const handleToggleUser = async (user: UserWithAttempts) => {
+    setIsTogglingUser(user.studentCode);
+    try {
+      const result = await ipcDb.toggleUserActive(
+        user.studentCode,
+        !user.isActive
+      );
+
+      if (result.success && result.updated) {
+        await refresh();
+        console.log(
+          `Successfully ${!user.isActive ? "activated" : "deactivated"} user ${
+            user.studentCode
+          }`
+        );
+      } else {
+        const errorMessage =
+          result.error ||
+          `Failed to ${
+            !user.isActive ? "activate" : "deactivate"
+          } user. No error message provided.`;
+        console.error("Failed to toggle user:", errorMessage);
+
+        if (result.error?.includes("Unauthorized")) {
+          console.error(
+            "Authentication error - admin session may have expired"
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error toggling user:", error);
+    } finally {
+      setIsTogglingUser(null);
+    }
+  };
+
+  const handleChangePinSubmit = async () => {
+    if (!selectedUser || !newPin || newPin.length !== 6) {
+      return;
+    }
+
+    try {
+      const result = await ipcDb.changeUserPin(
+        selectedUser.studentCode,
+        newPin
+      );
+
+      if (result.success && result.updated) {
+        await refresh();
+        setChangePinDialogOpen(false);
+        setSelectedUser(null);
+        setNewPin("");
+        console.log(
+          `Successfully changed PIN for user ${selectedUser.studentCode}`
+        );
+      } else {
+        console.error("Failed to change PIN:", result.error);
+      }
+    } catch (error) {
+      console.error("Error changing PIN:", error);
+    }
+  };
+
+  const formatLastLogin = (lastLogin: string | null) => {
+    if (!lastLogin) return "Never";
+    try {
+      return format(new Date(lastLogin), "MMM dd, yyyy 'at' HH:mm");
+    } catch {
+      return "Invalid date";
+    }
+  };
+
   const uniqueClasses = useMemo(() => {
     if (!users) return [];
     return Array.from(new Set(users.map((user) => user.className)));
@@ -170,18 +280,61 @@ export function UsersClient() {
             Manage student accounts and view quiz performance
           </p>
         </div>
-        <Button
-          onClick={refresh}
-          variant="outline"
-          size="sm"
-          disabled={isLoading}
-          className="font-sans"
-        >
-          <RefreshCw
-            className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
-          />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100">
+            {connectivity.isOnline ? (
+              <Wifi className="w-4 h-4 text-green-600" />
+            ) : (
+              <WifiOff className="w-4 h-4 text-red-600" />
+            )}
+            <span className="text-sm font-medium text-gray-700">
+              {connectivity.isOnline ? "Online" : "Offline"}
+            </span>
+          </div> */}
+
+          <Button
+            onClick={() => handleToggleAllUsers(false)}
+            variant="outline"
+            size="sm"
+            disabled={isTogglingAll}
+            className="font-sans text-red-600 border-red-200 hover:bg-red-50"
+          >
+            {isTogglingAll ? (
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <ShieldOff className="w-4 h-4 mr-2" />
+            )}
+            Disable All
+          </Button>
+
+          <Button
+            onClick={() => handleToggleAllUsers(true)}
+            variant="outline"
+            size="sm"
+            disabled={isTogglingAll}
+            className="font-sans text-green-600 border-green-200 hover:bg-green-50"
+          >
+            {isTogglingAll ? (
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Shield className="w-4 h-4 mr-2" />
+            )}
+            Enable All
+          </Button>
+
+          <Button
+            onClick={refresh}
+            variant="outline"
+            size="sm"
+            disabled={isLoading}
+            className="font-sans"
+          >
+            <RefreshCw
+              className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -302,13 +455,16 @@ export function UsersClient() {
             <TableHeader>
               <TableRow>
                 <TableHead className="font-sans">Student</TableHead>
+                <TableHead className="font-sans">Status</TableHead>
                 <TableHead className="font-sans">Class</TableHead>
                 <TableHead className="font-sans">Gender</TableHead>
+                <TableHead className="font-sans">Last Login</TableHead>
                 <TableHead className="font-sans">Quiz Attempts</TableHead>
                 <TableHead className="font-sans">Subjects</TableHead>
                 <TableHead className="font-sans">Best Score</TableHead>
                 <TableHead className="font-sans">Avg Score</TableHead>
                 <TableHead className="font-sans">Recent Activity</TableHead>
+                <TableHead className="font-sans">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -334,6 +490,11 @@ export function UsersClient() {
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="font-mono">
+                        {user.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="font-mono">
                         {user.className}
                       </Badge>
                     </TableCell>
@@ -342,6 +503,7 @@ export function UsersClient() {
                         {user.gender}
                       </span>
                     </TableCell>
+                    <TableCell>{formatLastLogin(user.lastLogin)}</TableCell>
                     <TableCell>
                       <div className="flex items-center space-x-2">
                         <Target className="w-4 h-4 text-gray-400" />
@@ -413,6 +575,36 @@ export function UsersClient() {
                         </span>
                       )}
                     </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          onClick={() => handleToggleUser(user)}
+                          variant="outline"
+                          size="sm"
+                          disabled={isTogglingUser === user.studentCode}
+                          className="font-sans text-red-600 border-red-200 hover:bg-red-50"
+                        >
+                          {isTogglingUser === user.studentCode ? (
+                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <PowerOff className="w-4 h-4 mr-2" />
+                          )}
+                          {user.isActive ? "Deactivate" : "Activate"}
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            setSelectedUser(user);
+                            setChangePinDialogOpen(true);
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="font-sans text-gray-600 border-gray-200 hover:bg-gray-50"
+                        >
+                          <Key className="w-4 h-4 mr-2" />
+                          Change PIN
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -420,6 +612,61 @@ export function UsersClient() {
           </Table>
         </div>
       </div>
+
+      <Dialog open={changePinDialogOpen} onOpenChange={setChangePinDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change User PIN</DialogTitle>
+            <DialogDescription>
+              {selectedUser && (
+                <>
+                  Change PIN for {selectedUser.firstName}{" "}
+                  {selectedUser.lastName} ({selectedUser.studentCode})
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label
+                htmlFor="newPin"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                New PIN (6 digits)
+              </label>
+              <Input
+                id="newPin"
+                type="password"
+                placeholder="Enter 6-digit PIN"
+                value={newPin}
+                onChange={(e) =>
+                  setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))
+                }
+                maxLength={6}
+                className="font-mono"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setChangePinDialogOpen(false);
+                setSelectedUser(null);
+                setNewPin("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleChangePinSubmit}
+              disabled={!newPin || newPin.length !== 6}
+            >
+              Change PIN
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

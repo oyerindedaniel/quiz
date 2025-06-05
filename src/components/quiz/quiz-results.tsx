@@ -3,6 +3,8 @@
 import { cn } from "@/utils/lib";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AuthenticationService } from "@/lib/auth/authentication-service";
+import { useRouter } from "next/navigation";
 import type { SubmissionResult, User, Subject } from "@/types/app";
 
 interface QuizResultsProps {
@@ -20,6 +22,20 @@ export function QuizResults({
   student,
   subject,
 }: QuizResultsProps) {
+  const router = useRouter();
+  const authService = AuthenticationService.getInstance();
+
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+      router.push("/");
+    } catch (error) {
+      console.error("Logout failed:", error);
+
+      router.push("/");
+    }
+  };
+
   if (!result.success) {
     return (
       <div className="w-full max-w-4xl mx-auto p-6">
@@ -326,22 +342,24 @@ export function QuizResults({
         </div>
       </div>
 
-      {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
-        {onRetakeQuiz && (
+        {/* {onRetakeQuiz && (
           <Button
             onClick={onRetakeQuiz}
             className="bg-brand-500 hover:bg-brand-600 text-white px-8 py-3"
           >
             Retake Quiz
           </Button>
-        )}
-        <Button onClick={onExit} variant="secondary" className="px-8 py-3">
-          Exit to Dashboard
+        )} */}
+        <Button
+          onClick={handleLogout}
+          variant="outline"
+          className="px-8 py-3 border-gray-300 text-gray-700 hover:bg-gray-50"
+        >
+          Logout
         </Button>
       </div>
 
-      {/* Additional Info */}
       <div className="text-center">
         <p className="text-sm text-gray-500">
           Your quiz has been automatically saved and will be synced when online.

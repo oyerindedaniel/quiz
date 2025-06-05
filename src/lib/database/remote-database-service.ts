@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { NeonManager } from "./neon.js";
 import { remoteSchema } from "./remote-schema.js";
 import type {
@@ -18,10 +18,9 @@ import type {
   SubjectWithStats,
   UserWithAttempts,
   AdminRole,
-} from "@/types/app";
-
-import { config } from "dotenv";
-config();
+  UserSeedData,
+} from "../../types/app.js";
+import { buildExcludedSetClause } from "../../utils/drizzle.js";
 
 interface ModifiedRecordsResult {
   id: string;
@@ -34,9 +33,7 @@ export class RemoteDatabaseService {
   private db: NodePgDatabase<typeof remoteSchema> | null = null;
   private neonManager: NeonManager | null = null;
 
-  private constructor() {
-    // this.initialize(process.env.NEON_DATABASE_URL);
-  }
+  private constructor() {}
 
   public static getInstance(): RemoteDatabaseService {
     if (!RemoteDatabaseService.instance) {
@@ -99,12 +96,64 @@ export class RemoteDatabaseService {
     return users[0] || null;
   }
 
+  async findUserByName(name: string): Promise<RemoteUser | null> {
+    const db = this.getDb();
+    const users = await db
+      .select()
+      .from(remoteSchema.users)
+      .where(
+        and(
+          eq(remoteSchema.users.name, name),
+          eq(remoteSchema.users.isActive, true)
+        )
+      )
+      .limit(1);
+
+    return users[0] || null;
+  }
+
   async createUser(
     userData: Omit<NewRemoteUser, "createdAt" | "updatedAt">
   ): Promise<void> {
     const db = this.getDb();
 
     await db.insert(remoteSchema.users).values(userData);
+  }
+
+  async createOrUpdateUser(
+    userData: Omit<NewRemoteUser, "createdAt" | "updatedAt">
+  ): Promise<{ created: boolean; updated: boolean }> {
+    const db = this.getDb();
+    const now = new Date();
+
+    try {
+      await db.insert(remoteSchema.users).values({
+        ...userData,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return { created: true, updated: false };
+    } catch (error) {
+      try {
+        const existing = await this.findUserByName(userData.name);
+        if (existing) {
+          await db
+            .update(remoteSchema.users)
+            .set({
+              studentCode: userData.studentCode,
+              passwordHash: userData.passwordHash,
+              class: userData.class,
+              gender: userData.gender,
+              updatedAt: now,
+            })
+            .where(eq(remoteSchema.users.id, existing.id));
+          return { created: false, updated: true };
+        }
+      } catch (updateError) {
+        console.error("Failed to update user:", updateError);
+      }
+      throw error;
+    }
   }
 
   async updateUser(
@@ -155,6 +204,41 @@ export class RemoteDatabaseService {
     const db = this.getDb();
 
     await db.insert(remoteSchema.subjects).values(subjectData);
+  }
+
+  async createOrUpdateSubject(
+    subjectData: Omit<NewRemoteSubject, "createdAt" | "updatedAt">
+  ): Promise<{ created: boolean; updated: boolean }> {
+    const db = this.getDb();
+    const now = new Date();
+
+    try {
+      await db.insert(remoteSchema.subjects).values({
+        ...subjectData,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return { created: true, updated: false };
+    } catch (error) {
+      try {
+        const existing = await this.findSubjectByCode(subjectData.subjectCode);
+        if (existing) {
+          await db
+            .update(remoteSchema.subjects)
+            .set({
+              name: subjectData.name,
+              description: subjectData.description,
+              class: subjectData.class,
+              updatedAt: now,
+            })
+            .where(eq(remoteSchema.subjects.id, existing.id));
+          return { created: false, updated: true };
+        }
+      } catch (updateError) {
+        console.error("Failed to update subject:", updateError);
+      }
+      throw error;
+    }
   }
 
   async updateSubject(
@@ -210,6 +294,28 @@ export class RemoteDatabaseService {
     });
   }
 
+  async findQuestionByTextAndOrder(
+    text: string,
+    questionOrder: number,
+    subjectId: string
+  ): Promise<RemoteQuestion | null> {
+    const db = this.getDb();
+    const questions = await db
+      .select()
+      .from(remoteSchema.questions)
+      .where(
+        and(
+          eq(remoteSchema.questions.text, text),
+          eq(remoteSchema.questions.questionOrder, questionOrder),
+          eq(remoteSchema.questions.subjectId, subjectId),
+          eq(remoteSchema.questions.isActive, true)
+        )
+      )
+      .limit(1);
+
+    return questions[0] || null;
+  }
+
   /**
    * Bulk create questions for better performance
    */
@@ -242,6 +348,123 @@ export class RemoteDatabaseService {
         success: false,
         created: 0,
         error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Update subject question count
+   */
+  async updateSubjectQuestionCount(subjectCode: string): Promise<void> {
+    const db = this.getDb();
+
+    // Only count answerable questions (not passages and headers)
+    const questionCount = await db
+      .select()
+      .from(remoteSchema.questions)
+      .where(
+        and(
+          eq(remoteSchema.questions.subjectCode, subjectCode),
+          eq(remoteSchema.questions.isActive, true),
+
+          sql`${remoteSchema.questions.text} NOT LIKE '[PASSAGE]%'`,
+          sql`${remoteSchema.questions.text} NOT LIKE '[HEADER]%'`
+        )
+      );
+
+    const count = questionCount.length;
+
+    await db
+      .update(remoteSchema.subjects)
+      .set({
+        totalQuestions: count,
+        updatedAt: new Date(),
+      })
+      .where(eq(remoteSchema.subjects.subjectCode, subjectCode));
+
+    console.log(
+      `Updated question count for subject ${subjectCode}: ${count} answerable questions`
+    );
+  }
+
+  /**
+   * Bulk upsert questions for idempotent seeding
+   * Uses question text and order to detect duplicates
+   */
+  async bulkUpsertQuestions(
+    questions: Omit<NewRemoteQuestion, "createdAt" | "updatedAt">[]
+  ): Promise<{
+    success: boolean;
+    created: number;
+    updated: number;
+    error?: string;
+  }> {
+    if (questions.length === 0) {
+      return { success: true, created: 0, updated: 0 };
+    }
+
+    const db = this.getDb();
+    const now = new Date();
+
+    const prepared = questions.map((q) => ({
+      ...q,
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+    try {
+      const result = await db
+        .insert(remoteSchema.questions)
+        .values(prepared)
+        .onConflictDoUpdate({
+          target: [
+            remoteSchema.questions.subjectId,
+            remoteSchema.questions.questionOrder,
+          ],
+          set: buildExcludedSetClause(remoteSchema.questions, [
+            "text",
+            "options",
+            "answer",
+            "explanation",
+            "updatedAt",
+          ]),
+        })
+        .returning({
+          createdAt: remoteSchema.questions.createdAt,
+          updatedAt: remoteSchema.questions.updatedAt,
+        });
+
+      const subjectCode = prepared[0].subjectCode;
+
+      try {
+        await this.updateSubjectQuestionCount(subjectCode);
+      } catch (error) {
+        console.warn(
+          `Failed to update question count for subject ${subjectCode}:`,
+          error
+        );
+      }
+
+      let created = 0;
+      let updated = 0;
+
+      for (const row of result) {
+        if (row.createdAt.getTime() === row.updatedAt.getTime()) {
+          created++;
+        } else {
+          updated++;
+        }
+      }
+
+      return { success: true, created, updated };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("❌ Failed to bulk upsert questions:", message);
+      return {
+        success: false,
+        created: 0,
+        updated: 0,
+        error: message,
       };
     }
   }
@@ -379,6 +602,53 @@ export class RemoteDatabaseService {
     const db = this.getDb();
 
     try {
+      // Validate required fields before syncing
+      if (!attempt.userId || !attempt.subjectId) {
+        console.warn(
+          `Quiz attempt ${attempt.id} has missing required fields (userId: ${attempt.userId}, subjectId: ${attempt.subjectId}), skipping sync`
+        );
+        throw new Error(`Invalid quiz attempt: missing userId or subjectId`);
+      }
+
+      if (!attempt.totalQuestions || attempt.totalQuestions <= 0) {
+        console.warn(
+          `Quiz attempt ${attempt.id} has invalid totalQuestions (${attempt.totalQuestions}), skipping sync`
+        );
+        throw new Error(`Invalid quiz attempt: invalid totalQuestions`);
+      }
+
+      const safeDate = (dateString: string | null | undefined): Date | null => {
+        if (!dateString) return null;
+        try {
+          const date = new Date(dateString);
+          return isNaN(date.getTime()) ? null : date;
+        } catch {
+          return null;
+        }
+      };
+
+      let startedAt = safeDate(attempt.startedAt);
+
+      // Handle invalid or missing startedAt timestamps
+      if (!startedAt) {
+        console.warn(
+          `Quiz attempt ${attempt.id} has invalid startedAt (${attempt.startedAt}), using updatedAt or current time as fallback`
+        );
+
+        // Try to use updatedAt as fallback
+        startedAt = safeDate(attempt.updatedAt);
+
+        // If updatedAt is also invalid, use current time
+        if (!startedAt) {
+          startedAt = new Date();
+          console.warn(
+            `Quiz attempt ${attempt.id} also has invalid updatedAt, using current time`
+          );
+        }
+      }
+
+      const submittedAt = safeDate(attempt.submittedAt);
+
       await db
         .insert(remoteSchema.quizAttempts)
         .values({
@@ -389,10 +659,8 @@ export class RemoteDatabaseService {
           score: attempt.score,
           totalQuestions: attempt.totalQuestions,
           submitted: attempt.submitted,
-          startedAt: new Date(attempt.startedAt),
-          submittedAt: attempt.submittedAt
-            ? new Date(attempt.submittedAt)
-            : null,
+          startedAt: startedAt,
+          submittedAt: submittedAt,
           sessionDuration: attempt.sessionDuration,
         })
         .onConflictDoUpdate({
@@ -401,9 +669,7 @@ export class RemoteDatabaseService {
             answers: attempt.answers ? JSON.parse(attempt.answers) : null,
             score: attempt.score,
             submitted: attempt.submitted,
-            submittedAt: attempt.submittedAt
-              ? new Date(attempt.submittedAt)
-              : null,
+            submittedAt: submittedAt,
             sessionDuration: attempt.sessionDuration,
             updatedAt: new Date(),
           },
@@ -452,27 +718,9 @@ export class RemoteDatabaseService {
       );
 
       return {
-        users: users.map((user) => ({
-          ...user,
-          // Convert for local schema compatibility
-          createdAt: user.createdAt.toISOString(),
-          updatedAt: user.updatedAt.toISOString(),
-          ...(user.lastLogin && {
-            lastLogin: user.lastLogin.toISOString(),
-          }),
-        })) as unknown as RemoteUser[],
-        subjects: subjects.map((subject) => ({
-          ...subject,
-          createdAt: subject.createdAt.toISOString(),
-          updatedAt: subject.updatedAt.toISOString(),
-        })) as unknown as RemoteSubject[],
-        questions: questions.map((question) => ({
-          ...question,
-          // Convert JSONB options to string for local SQLite
-          options: JSON.stringify(question.options),
-          createdAt: question.createdAt.toISOString(),
-          updatedAt: question.updatedAt.toISOString(),
-        })) as unknown as RemoteQuestion[],
+        users,
+        subjects,
+        questions,
       };
     } catch (error) {
       console.error(
@@ -603,12 +851,148 @@ export class RemoteDatabaseService {
     }
   }
 
-  async cleanup(): Promise<void> {
-    if (this.neonManager) {
-      await this.neonManager.close();
-      this.neonManager = null;
+  /**
+   * User regulation methods for admin control
+   */
+
+  /**
+   * Toggle active state for all users
+   */
+  async toggleAllUsersActive(
+    isActive: boolean
+  ): Promise<{ success: boolean; error?: string; updatedCount?: number }> {
+    try {
+      const db = this.getDb();
+
+      const result = await db
+        .update(remoteSchema.users)
+        .set({
+          isActive,
+          updatedAt: new Date(),
+        })
+        .returning({ id: remoteSchema.users.id });
+
+      return {
+        success: true,
+        updatedCount: result.length,
+      };
+    } catch (error) {
+      console.error(
+        "RemoteDatabaseService: Error toggling all users active state:",
+        error
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
-    this.db = null;
+  }
+
+  /**
+   * Toggle active state for a specific user
+   */
+  async toggleUserActive(
+    studentCode: string,
+    isActive: boolean
+  ): Promise<{ success: boolean; error?: string; updated?: boolean }> {
+    try {
+      const db = this.getDb();
+
+      const result = await db
+        .update(remoteSchema.users)
+        .set({
+          isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(remoteSchema.users.studentCode, studentCode))
+        .returning({ id: remoteSchema.users.id });
+
+      return {
+        success: true,
+        updated: result.length > 0,
+      };
+    } catch (error) {
+      console.error(
+        "RemoteDatabaseService: Error toggling user active state:",
+        error
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Change user PIN
+   */
+  async changeUserPin(
+    studentCode: string,
+    newPin: string
+  ): Promise<{ success: boolean; error?: string; updated?: boolean }> {
+    try {
+      const db = this.getDb();
+
+      // Hash the new PIN
+      const bcrypt = await import("bcryptjs");
+      const hashedPin = await bcrypt.hash(newPin, 10);
+
+      const result = await db
+        .update(remoteSchema.users)
+        .set({
+          passwordHash: hashedPin,
+          updatedAt: new Date(),
+        })
+        .where(eq(remoteSchema.users.studentCode, studentCode))
+        .returning({ id: remoteSchema.users.id });
+
+      return {
+        success: true,
+        updated: result.length > 0,
+      };
+    } catch (error) {
+      console.error("RemoteDatabaseService: Error changing user PIN:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Update user last login timestamp
+   */
+  async updateUserLastLogin(studentCode: string): Promise<void> {
+    try {
+      const db = this.getDb();
+
+      await db
+        .update(remoteSchema.users)
+        .set({
+          lastLogin: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(remoteSchema.users.studentCode, studentCode));
+    } catch (error) {
+      console.error(
+        "RemoteDatabaseService: Error updating user last login:",
+        error
+      );
+    }
+  }
+
+  /**
+   * Cleanup database connections
+   */
+  async cleanup(): Promise<void> {
+    try {
+      if (this.neonManager) {
+        await this.neonManager.close();
+      }
+      this.db = null;
+    } catch (error) {
+      console.error("RemoteDatabaseService: Cleanup error:", error);
+    }
   }
 
   // ===== ADMIN OPERATIONS =====
@@ -732,15 +1116,16 @@ export class RemoteDatabaseService {
     });
 
     return usersWithAttempts.map((user) => {
-      const [firstName, ...lastNameParts] = user.name.split(" ");
       return {
         id: user.id,
         studentCode: user.studentCode,
-        firstName: firstName || "",
-        lastName: lastNameParts.join(" ") || "",
+        firstName: user.name.split(" ")[0] || user.name,
+        lastName: user.name.split(" ").slice(1).join(" ") || "",
         className: user.class,
         gender: user.gender,
-        pin: "****",
+        pin: user.passwordHash,
+        isActive: user.isActive ?? true,
+        lastLogin: user.lastLogin ? user.lastLogin.toISOString() : null,
         createdAt: user.createdAt.toISOString(),
         updatedAt: user.updatedAt.toISOString(),
         quizAttempts: user.quizAttempts.map((attempt) => ({
@@ -1115,6 +1500,31 @@ export class RemoteDatabaseService {
             ? error.message
             : "Failed to delete quiz attempts",
       };
+    }
+  }
+
+  //TODO: Possible circular dependency
+  /**
+   * Get student credentials
+   */
+  async getStudentCredentials(): Promise<Array<UserSeedData>> {
+    try {
+      const { ALL_STUDENTS } = await import("../constants/students.js");
+
+      return ALL_STUDENTS.map((student, index) => {
+        const pin = String(100000 + (index + 1)).padStart(6, "1");
+
+        return {
+          name: student.name,
+          studentCode: student.studentCode,
+          pin: pin,
+          class: student.class,
+          gender: student.gender,
+        };
+      });
+    } catch (error) {
+      console.error("Get student credentials error:", error);
+      return [];
     }
   }
 }

@@ -118,3 +118,44 @@ export function sleep(ms: number): Promise<void> {
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+/**
+ * Recursively serializes all Date instances in the object into ISO strings.
+ *
+ * @param data - An object possibly containing Date values
+ * @returns A copy of the object with Dates stringified
+ */
+export function serializeData<T>(data: T): Serialized<T> {
+  if (data instanceof Date) {
+    return data.toISOString() as Serialized<T>;
+  }
+
+  if (Array.isArray(data)) {
+    return data.map(serializeData) as Serialized<T>;
+  }
+
+  if (data !== null && typeof data === "object") {
+    const result: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(data)) {
+      result[key] = serializeData(value);
+    }
+
+    return result as Serialized<T>;
+  }
+
+  return data as Serialized<T>;
+}
+
+/**
+ * Recursively maps all Date types in an object to string.
+ */
+type Serialized<T> = T extends Date
+  ? string
+  : T extends Array<infer U>
+  ? Array<Serialized<U>>
+  : T extends object
+  ? {
+      [K in keyof T]: Serialized<T[K]>;
+    }
+  : T;

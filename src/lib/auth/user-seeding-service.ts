@@ -2,7 +2,12 @@ import { LocalDatabaseService } from "../database/local-database-service.js";
 import { generateUUID } from "../../utils/lib.js";
 import { ALL_STUDENTS } from "../constants/students.js";
 import bcrypt from "bcryptjs";
-import type { UserSeedData, SeedResult, Class, Gender } from "@/types/app";
+import type {
+  UserSeedData,
+  SeedResult,
+  Class,
+  Gender,
+} from "../../types/app.js";
 import { RemoteDatabaseService } from "../database/remote-database-service.js";
 import { v4 as uuidv4 } from "uuid";
 

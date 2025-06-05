@@ -75,7 +75,6 @@ export function TimeInput({
             placeholder="0"
             className="text-center font-mono text-brand-700"
             disabled={disabled}
-            required
           />
         </div>
 
@@ -92,7 +91,6 @@ export function TimeInput({
             placeholder="0"
             className="text-center font-mono text-brand-700"
             disabled={disabled}
-            required
           />
         </div>
 
@@ -109,7 +107,6 @@ export function TimeInput({
             placeholder="0"
             className="text-center font-mono text-brand-700"
             disabled={disabled}
-            required
           />
         </div>
       </div>

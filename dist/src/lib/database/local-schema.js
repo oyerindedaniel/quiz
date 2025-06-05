@@ -14,6 +14,7 @@ exports.usersTable = (0, sqlite_core_1.sqliteTable)("users", {
     updatedAt: (0, sqlite_core_1.text)("updated_at").notNull(),
     lastSynced: (0, sqlite_core_1.text)("last_synced"),
     isActive: (0, sqlite_core_1.integer)("is_active", { mode: "boolean" }).default(true),
+    lastLogin: (0, sqlite_core_1.text)("last_login"),
 });
 exports.subjectsTable = (0, sqlite_core_1.sqliteTable)("subjects", {
     id: (0, sqlite_core_1.text)("id").primaryKey(),

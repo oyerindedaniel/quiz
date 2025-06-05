@@ -3,9 +3,6 @@ import { Pool } from "pg";
 import { remoteSchema } from "./remote-schema.js";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import { config } from "dotenv";
-config();
-
 export class NeonManager {
   private db: NodePgDatabase<typeof remoteSchema> | null = null;
   private pool: Pool | null = null;
@@ -45,8 +42,8 @@ export class NeonManager {
         connectionString: this.connectionString,
         max: 3,
         min: 1,
-        idleTimeoutMillis: 10000,
-        connectionTimeoutMillis: 5000,
+        // idleTimeoutMillis: 10000,
+        // connectionTimeoutMillis: 5000,
         ssl: {
           rejectUnauthorized: false,
         },
