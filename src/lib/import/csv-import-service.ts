@@ -411,7 +411,6 @@ export class CSVImportService {
   ): Promise<void> {
     const questionsToCreate: Omit<NewQuestion, "createdAt" | "updatedAt">[] =
       [];
-    let questionOrder = 1;
 
     for (const row of rows) {
       results.processed++;
@@ -453,6 +452,16 @@ export class CSVImportService {
           results.questions.regular++;
         }
 
+        // TODO: passage, header, image should not have a question order
+        let questionOrder: number;
+        if (row["Question Order"] && row["Question Order"].trim()) {
+          questionOrder = parseInt(row["Question Order"]);
+        } else {
+          // For special items (passage/header/image), uses a high number to sort them properly
+          // We'll use row index + 1000 to ensure they appear in the right sequence
+          questionOrder = results.processed + 1000;
+        }
+
         if (
           questionType === "passage" ||
           questionType === "header" ||
@@ -466,9 +475,7 @@ export class CSVImportService {
             text: `[${questionType.toUpperCase()}] ${processedText}`,
             options: JSON.stringify([]), // Empty options for special questions
             answer: "", // No correct answer for special questions
-            questionOrder: row["Question Order"]
-              ? parseInt(row["Question Order"])
-              : questionOrder,
+            questionOrder,
           });
         } else {
           this.validateRegularQuestion(row);
@@ -491,14 +498,11 @@ export class CSVImportService {
             text: processedText,
             options: JSON.stringify(options),
             answer: row["Correct Answer"].toUpperCase().trim(),
-            questionOrder: row["Question Order"]
-              ? parseInt(row["Question Order"])
-              : questionOrder,
+            questionOrder,
           });
         }
 
         results.successful++;
-        questionOrder++;
       } catch (error) {
         results.failed++;
         results.errors.push(

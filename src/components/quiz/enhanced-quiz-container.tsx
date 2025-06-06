@@ -121,14 +121,12 @@ export function EnhancedQuizContainer() {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       const session = await authService.getCurrentSession();
-
       if (!session.isAuthenticated || !session.user || !session.subject) {
         router.push("/");
         return;
       }
 
       const controller = new QuizController();
-
       const quizSession = await controller.startQuiz(
         session.user.id,
         session.subject.id
@@ -138,6 +136,14 @@ export function EnhancedQuizContainer() {
         quizSession.questions
       );
 
+      console.log("processedData", {
+        questionItems: processedData.questionItems,
+        questionItemsLength: processedData.questionItems.length,
+        actualQuestions: processedData.actualQuestions,
+        actualQuestionsLength: processedData.actualQuestions.length,
+        totalQuestions: processedData.totalQuestions,
+      });
+
       const validation = QuestionProcessor.validateQuestionStructure(
         processedData.questionItems
       );
@@ -145,46 +151,13 @@ export function EnhancedQuizContainer() {
         console.warn("Question structure issues:", validation.issues);
       }
 
-      let currentIndex = 0;
-
-      // For enhanced quiz, we need to map question index to item index
-      if (quizSession.isResume && Object.keys(quizSession.answers).length > 0) {
-        // Find the first unanswered question in the processed items
-        for (let i = 0; i < processedData.questionItems.length; i++) {
-          const item = processedData.questionItems[i];
-          if (
-            item.type === "question" &&
-            !(item.question.id in quizSession.answers)
-          ) {
-            currentIndex = i;
-            // Sync controller's current question index
-            controller.syncCurrentQuestionIndex(item.question.id);
-            break;
-          }
-          // For headers, check if the paired question is answered
-          if (
-            item.type === "header" &&
-            i + 1 < processedData.questionItems.length &&
-            processedData.questionItems[i + 1].type === "question"
-          ) {
-            const pairedQuestion = processedData.questionItems[i + 1];
-            if (!(pairedQuestion.question.id in quizSession.answers)) {
-              currentIndex = i; // Start from header
-              // Sync controller's current question index with the paired question
-              controller.syncCurrentQuestionIndex(pairedQuestion.question.id);
-              break;
-            }
-          }
-        }
-      } else {
-        // Starting fresh - sync with first question
-        const firstQuestionItem = processedData.questionItems.find(
-          (item) => item.type === "question"
-        );
-        if (firstQuestionItem && firstQuestionItem.type === "question") {
-          controller.syncCurrentQuestionIndex(firstQuestionItem.question.id);
-        }
-      }
+      // Find current index - first unanswered question or start from beginning
+      const currentIndex = findCurrentQuestionIndex(
+        processedData.questionItems,
+        quizSession.answers,
+        quizSession.isResume,
+        controller
+      );
 
       let timeLimit: number | null = null;
       let timeRemaining: number | null = null;
@@ -227,6 +200,48 @@ export function EnhancedQuizContainer() {
     }
   };
 
+  const findCurrentQuestionIndex = (
+    questionItems: QuestionItem[],
+    answers: Record<string, string>,
+    isResume: boolean,
+    controller: QuizController
+  ): number => {
+    if (!isResume || Object.keys(answers).length === 0) {
+      // Starting fresh - find first answerable question
+      return QuestionProcessor.findFirstAnswerableIndex(questionItems);
+    }
+
+    // Resume mode - find first unanswered question
+    for (let i = 0; i < questionItems.length; i++) {
+      const item = questionItems[i];
+
+      if (item.type === "question") {
+        const isAnswered = item.question.id in answers;
+        if (!isAnswered) {
+          controller.syncCurrentQuestionIndex(item.question.id);
+          return i;
+        }
+      } else if (item.type === "header" || item.type === "image") {
+        const nextIndex = i + 1;
+        if (
+          nextIndex < questionItems.length &&
+          questionItems[nextIndex].type === "question"
+        ) {
+          const pairedQuestion = questionItems[nextIndex];
+          const isAnswered = pairedQuestion.question.id in answers;
+          if (!isAnswered) {
+            controller.syncCurrentQuestionIndex(pairedQuestion.question.id);
+            return i; // Return header/image index
+          }
+          i = nextIndex; // Skip the paired question in next iteration
+        }
+      }
+    }
+
+    // All questions answered, return first index
+    return QuestionProcessor.findFirstAnswerableIndex(questionItems);
+  };
+
   const handleStartQuiz = async () => {
     await initializeQuiz();
   };
@@ -234,26 +249,17 @@ export function EnhancedQuizContainer() {
   const handleAnswerSelect = async (selectedOption: string) => {
     if (!state.processedData || !state.quizController) return;
 
-    const currentItem = state.processedData.questionItems[state.currentIndex];
-    let questionToAnswer: QuestionItem | null = null;
+    const questionToAnswer = QuestionProcessor.getAnswerableQuestion(
+      state.processedData.questionItems,
+      state.currentIndex
+    );
 
-    // Determine which question to answer
-    if (currentItem.type === "question") {
-      questionToAnswer = currentItem;
-    } else if (
-      currentItem.type === "header" &&
-      state.currentIndex + 1 < state.processedData.questionItems.length &&
-      state.processedData.questionItems[state.currentIndex + 1].type ===
-        "question"
-    ) {
-      questionToAnswer =
-        state.processedData.questionItems[state.currentIndex + 1];
+    if (!questionToAnswer) {
+      console.error("No valid question found to answer");
+      return;
     }
 
-    if (!questionToAnswer) return;
-
     try {
-      // Sync the controller's current question index with the current question
       state.quizController.syncCurrentQuestionIndex(
         questionToAnswer.question.id
       );
@@ -263,15 +269,11 @@ export function EnhancedQuizContainer() {
         selectedOption
       );
 
-      console.log("result", result);
-
       if (!result.success) {
         throw new Error(result.error || "Failed to save answer");
       }
 
       const session = state.quizController.getCurrentSession();
-
-      console.log("session", session);
       if (session) {
         setState((prev) => ({
           ...prev,
@@ -297,21 +299,11 @@ export function EnhancedQuizContainer() {
 
     if (nextIndex !== null) {
       setState((prev) => ({ ...prev, currentIndex: nextIndex }));
-
-      // Sync controller's current question index with the new position
-      const nextItem = state.processedData.questionItems[nextIndex];
-      if (nextItem.type === "question") {
-        state.quizController.syncCurrentQuestionIndex(nextItem.question.id);
-      } else if (
-        nextItem.type === "header" &&
-        nextIndex + 1 < state.processedData.questionItems.length &&
-        state.processedData.questionItems[nextIndex + 1].type === "question"
-      ) {
-        const pairedQuestion = state.processedData.questionItems[nextIndex + 1];
-        state.quizController.syncCurrentQuestionIndex(
-          pairedQuestion.question.id
-        );
-      }
+      syncControllerWithIndex(
+        state.processedData.questionItems,
+        nextIndex,
+        state.quizController
+      );
     }
   };
 
@@ -325,21 +317,26 @@ export function EnhancedQuizContainer() {
 
     if (prevIndex !== null) {
       setState((prev) => ({ ...prev, currentIndex: prevIndex }));
+      syncControllerWithIndex(
+        state.processedData.questionItems,
+        prevIndex,
+        state.quizController
+      );
+    }
+  };
 
-      // Sync controller's current question index with the new position
-      const prevItem = state.processedData.questionItems[prevIndex];
-      if (prevItem.type === "question") {
-        state.quizController.syncCurrentQuestionIndex(prevItem.question.id);
-      } else if (
-        prevItem.type === "header" &&
-        prevIndex + 1 < state.processedData.questionItems.length &&
-        state.processedData.questionItems[prevIndex + 1].type === "question"
-      ) {
-        const pairedQuestion = state.processedData.questionItems[prevIndex + 1];
-        state.quizController.syncCurrentQuestionIndex(
-          pairedQuestion.question.id
-        );
-      }
+  const syncControllerWithIndex = (
+    questionItems: QuestionItem[],
+    index: number,
+    controller: QuizController
+  ) => {
+    const questionToSync = QuestionProcessor.getAnswerableQuestion(
+      questionItems,
+      index
+    );
+
+    if (questionToSync) {
+      controller.syncCurrentQuestionIndex(questionToSync.question.id);
     }
   };
 
@@ -354,6 +351,8 @@ export function EnhancedQuizContainer() {
       if (!result.success) {
         throw new Error(result.error || "Failed to submit quiz");
       }
+
+      console.log("result", result);
 
       setState((prev) => ({
         ...prev,
@@ -386,13 +385,7 @@ export function EnhancedQuizContainer() {
       ) {
         setState((prev) => ({ ...prev, autoSubmitTriggered: true }));
         handleSubmitQuiz();
-        return;
       }
-
-      // setState((prev) => ({
-      //   ...prev,
-      //   timeRemaining: remainingTime,
-      // }));
     },
     [
       state.phase,
@@ -402,7 +395,7 @@ export function EnhancedQuizContainer() {
     ]
   );
 
-  // Current question number - force recalculation on navigation
+  // Current question number for display
   const currentQuestion = useMemo(() => {
     if (!state.processedData) return 1;
     return QuestionProcessor.getCurrentQuestionNumber(
@@ -416,40 +409,27 @@ export function EnhancedQuizContainer() {
   const { selectedAnswer, currentQuestionId } = useMemo(() => {
     if (
       !state.processedData ||
-      state.currentIndex < 0 ||
-      state.currentIndex >= state.processedData.questionItems.length
+      !state.processedData.questionItems[state.currentIndex]
     ) {
-      console.log("no processed data");
       return { selectedAnswer: undefined, currentQuestionId: undefined };
     }
 
-    const currentItem = state.processedData.questionItems[state.currentIndex];
+    const answerableQuestion = QuestionProcessor.getAnswerableQuestion(
+      state.processedData.questionItems,
+      state.currentIndex
+    );
 
-    console.log("currentItem", currentItem);
-
-    if (currentItem.type === "question") {
-      const questionId = currentItem.question.id;
-
-      return {
-        selectedAnswer: state.answers[questionId] || undefined,
-        currentQuestionId: questionId,
-      };
-    } else if (
-      currentItem.type === "header" &&
-      state.currentIndex + 1 < state.processedData.questionItems.length &&
-      state.processedData.questionItems[state.currentIndex + 1].type ===
-        "question"
-    ) {
-      const pairedQuestion =
-        state.processedData.questionItems[state.currentIndex + 1];
-      const questionId = pairedQuestion.question.id;
-      return {
-        selectedAnswer: state.answers[questionId] || undefined,
-        currentQuestionId: questionId,
-      };
+    if (!answerableQuestion) {
+      return { selectedAnswer: undefined, currentQuestionId: undefined };
     }
 
-    return { selectedAnswer: undefined, currentQuestionId: undefined };
+    const questionId = answerableQuestion.question.id;
+    const answer = state.answers[questionId];
+
+    return {
+      selectedAnswer: answer || undefined,
+      currentQuestionId: questionId,
+    };
   }, [state.processedData, state.currentIndex, state.answers]);
 
   // Navigation calculations
@@ -458,25 +438,24 @@ export function EnhancedQuizContainer() {
       return { canGoNext: false, canGoPrevious: false, isLastQuestion: false };
     }
 
+    const nextIndex = QuestionProcessor.getNextAnswerableQuestionIndex(
+      state.processedData.questionItems,
+      state.currentIndex
+    );
+
+    const prevIndex = QuestionProcessor.getPreviousAnswerableQuestionIndex(
+      state.processedData.questionItems,
+      state.currentIndex
+    );
+
     return {
-      canGoNext:
-        QuestionProcessor.getNextAnswerableQuestionIndex(
-          state.processedData.questionItems,
-          state.currentIndex
-        ) !== null,
-      canGoPrevious:
-        QuestionProcessor.getPreviousAnswerableQuestionIndex(
-          state.processedData.questionItems,
-          state.currentIndex
-        ) !== null,
-      isLastQuestion: QuestionProcessor.isLastAnswerableQuestion(
-        state.processedData.questionItems,
-        state.currentIndex
-      ),
+      canGoNext: nextIndex !== null,
+      canGoPrevious: prevIndex !== null,
+      isLastQuestion: nextIndex === null,
     };
   }, [state.processedData, state.currentIndex]);
 
-  // Answer count and percentage
+  // Answer statistics
   const { answeredCount, percentage } = useMemo(() => {
     if (!state.processedData) {
       return { answeredCount: 0, percentage: 0 };

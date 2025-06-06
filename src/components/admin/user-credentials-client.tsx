@@ -16,6 +16,7 @@ import { IPCDatabaseService } from "@/lib/services/ipc-database-service";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
 import { useAdminData } from "@/hooks/use-admin-data";
 import { useFilteredData } from "@/hooks/use-filtered-data";
+import { downloadCSV, csvExtractors } from "@/utils/download";
 import { toast } from "sonner";
 import { Eye, EyeOff, Copy, Download, Search } from "lucide-react";
 import type { Class } from "@/types/app";
@@ -83,29 +84,14 @@ export function UserCredentialsClient() {
   };
 
   const downloadCredentials = () => {
-    const csvContent = [
-      ["Name", "Student Code", "PIN", "Class", "Gender"].join(","),
-      ...filteredCredentials.map((cred) =>
-        [cred.name, cred.studentCode, cred.pin, cred.class, cred.gender].join(
-          ","
-        )
-      ),
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `student-credentials-${
-      selectedClass === "ALL" ? "all" : selectedClass
-    }.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-
-    toast.success("Download started!", {
-      description: "Credentials exported to CSV file",
+    downloadCSV({
+      data: filteredCredentials,
+      headers: ["Name", "Student Code", "PIN", "Class", "Gender"],
+      extractValues: csvExtractors.studentCredentials,
+      filename: `student-credentials-${
+        selectedClass === "ALL" ? "all" : selectedClass
+      }`,
+      successMessage: "Credentials exported to CSV file",
     });
   };
 

@@ -148,12 +148,11 @@ export function EnhancedQuestionDisplay({
             <Badge variant="secondary" className="bg-white text-brand-700">
               Reading Passage
             </Badge>
-            <span className="text-white text-sm">
+            {/* <span className="text-white text-sm">
               {currentIndex + 1} of {questionItems.length}
-            </span>
+            </span> */}
           </div>
         </div>
-
         <div className="p-8">
           {content.split("\n\n").map((paragraph, index) => {
             if (paragraph.trim().startsWith("PASSAGE")) {
@@ -255,187 +254,91 @@ export function EnhancedQuestionDisplay({
   const renderHeaderWithQuestion = (
     headerContent: string,
     questionItem: QuestionItem
-  ) => (
-    <div className="w-full max-w-4xl mx-auto p-6 space-y-6">
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-        <div className="bg-progress-500 px-6 py-4">
-          <Badge variant="secondary" className="bg-white text-progress-700">
-            Instructions
-          </Badge>
-        </div>
-        <div className="p-6">
-          <h3 className="text-lg font-bold text-gray-900 mb-2">
-            {headerContent}
-          </h3>
-        </div>
-      </div>
+  ) => {
+    const questionOptionLabels = getOptionLabels(questionItem);
 
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-        <div className="bg-brand-500 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <Badge variant="secondary" className="bg-white text-brand-700">
-              Question {currentQuestion} of {totalQuestions}
+    return (
+      <div className="w-full max-w-4xl mx-auto p-6 space-y-6">
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+          <div className="bg-progress-500 px-6 py-4">
+            <Badge variant="secondary" className="bg-white text-progress-700">
+              Instructions
             </Badge>
           </div>
+          <div className="p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">
+              {headerContent}
+            </h3>
+          </div>
         </div>
 
-        <div className="p-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6 leading-relaxed">
-            {parseTextWithUnderlines(questionItem.content)}
-          </h2>
-
-          {questionItem.options && questionItem.options.length > 0 && (
-            <div className="space-y-4">
-              {questionItem.options.map((option, index) => {
-                const optionLabel = optionLabels[index];
-                const isSelected = selectedAnswer === optionLabel;
-
-                return (
-                  <button
-                    key={index}
-                    onClick={() => handleAnswerSelect(optionLabel)}
-                    className={cn(
-                      "w-full text-left p-4 rounded-lg border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-                      isSelected
-                        ? "border-selected-500 bg-selected-50 text-selected-900 shadow-md"
-                        : "border-gray-200 hover:border-brand-300 hover:bg-brand-25 hover:shadow-sm"
-                    )}
-                    disabled={isSubmitting}
-                  >
-                    <div className="flex items-start space-x-3">
-                      <span
-                        className={cn(
-                          "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold",
-                          isSelected
-                            ? "bg-selected-500 text-white"
-                            : "bg-gray-100 text-gray-600"
-                        )}
-                      >
-                        {optionLabel}
-                      </span>
-                      <span className="text-base leading-relaxed pt-1">
-                        {parseTextWithUnderlines(option)}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-        <div className="flex items-center justify-between">
-          <Button
-            onClick={handlePrevious}
-            disabled={!canGoPrevious || isSubmitting}
-            variant="secondary"
-            className={cn(
-              "flex items-center space-x-2",
-              (!canGoPrevious || isSubmitting) &&
-                "opacity-50 cursor-not-allowed"
-            )}
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-            <span>Previous</span>
-          </Button>
-
-          <div className="flex items-center space-x-3">
-            <span className="text-sm text-gray-600">
-              {currentQuestion} / {totalQuestions}
-            </span>
-            {selectedAnswer && (
-              <Badge className="bg-correct-500 text-white">
-                <svg
-                  className="w-3 h-3 mr-1"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                Answered
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+          <div className="bg-brand-500 px-6 py-4">
+            <div className="flex items-center justify-between">
+              <Badge variant="secondary" className="bg-white text-brand-700">
+                Question {currentQuestion} of {totalQuestions}
               </Badge>
-            )}
+            </div>
           </div>
 
-          {isLastQuestion ? (
+          <div className="p-8">
+            <h2 className="text-xl font-semibold text-gray-900 mb-6 leading-relaxed">
+              {parseTextWithUnderlines(questionItem.content)}
+            </h2>
+
+            {questionItem.options && questionItem.options.length > 0 && (
+              <div className="space-y-4">
+                {questionItem.options.map((option, index) => {
+                  const optionLabel = questionOptionLabels[index];
+                  const isSelected = selectedAnswer === optionLabel;
+
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => handleAnswerSelect(optionLabel)}
+                      className={cn(
+                        "w-full text-left p-4 rounded-lg border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
+                        isSelected
+                          ? "border-selected-500 bg-selected-50 text-selected-900 shadow-md"
+                          : "border-gray-200 hover:border-brand-300 hover:bg-brand-25 hover:shadow-sm"
+                      )}
+                      disabled={isSubmitting}
+                    >
+                      <div className="flex items-start space-x-3">
+                        <span
+                          className={cn(
+                            "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold",
+                            isSelected
+                              ? "bg-selected-500 text-white"
+                              : "bg-gray-100 text-gray-600"
+                          )}
+                        >
+                          {optionLabel}
+                        </span>
+                        <span className="text-base leading-relaxed pt-1">
+                          {parseTextWithUnderlines(option)}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
             <Button
-              onClick={onSubmitQuiz}
-              disabled={isSubmitting}
-              className={cn(
-                "flex items-center space-x-2 bg-correct-500 hover:bg-correct-600",
-                isSubmitting && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              {isSubmitting ? (
-                <>
-                  <svg
-                    className="animate-spin w-5 h-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                  <span>Submitting...</span>
-                </>
-              ) : (
-                <>
-                  <span>Submit Quiz</span>
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                </>
-              )}
-            </Button>
-          ) : (
-            <Button
-              onClick={handleNext}
-              disabled={!canGoNext || isSubmitting}
+              onClick={handlePrevious}
+              disabled={!canGoPrevious || isSubmitting}
+              variant="secondary"
               className={cn(
                 "flex items-center space-x-2",
-                (!canGoNext || isSubmitting) && "opacity-50 cursor-not-allowed"
+                (!canGoPrevious || isSubmitting) &&
+                  "opacity-50 cursor-not-allowed"
               )}
             >
-              <span>Next</span>
               <svg
                 className="w-5 h-5"
                 fill="none"
@@ -446,15 +349,116 @@ export function EnhancedQuestionDisplay({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M9 5l7 7-7 7"
+                  d="M15 19l-7-7 7-7"
                 />
               </svg>
+              <span>Previous</span>
             </Button>
-          )}
+
+            <div className="flex items-center space-x-3">
+              <span className="text-sm text-gray-600">
+                {currentQuestion} / {totalQuestions}
+              </span>
+              {selectedAnswer && (
+                <Badge className="bg-correct-500 text-white">
+                  <svg
+                    className="w-3 h-3 mr-1"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  Answered
+                </Badge>
+              )}
+            </div>
+
+            {isLastQuestion ? (
+              <Button
+                onClick={onSubmitQuiz}
+                disabled={isSubmitting}
+                className={cn(
+                  "flex items-center space-x-2 bg-correct-500 hover:bg-correct-600",
+                  isSubmitting && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                {isSubmitting ? (
+                  <>
+                    <svg
+                      className="animate-spin w-5 h-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    <span>Submitting...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Submit Quiz</span>
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </>
+                )}
+              </Button>
+            ) : (
+              <Button
+                onClick={handleNext}
+                disabled={!canGoNext || isSubmitting}
+                className={cn(
+                  "flex items-center space-x-2",
+                  (!canGoNext || isSubmitting) &&
+                    "opacity-50 cursor-not-allowed"
+                )}
+              >
+                <span>Next</span>
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Render regular question
   const renderRegularQuestion = (questionItem: QuestionItem) => (
@@ -514,7 +518,6 @@ export function EnhancedQuestionDisplay({
         </div>
       </div>
 
-      {/* Navigation Controls */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
         <div className="flex items-center justify-between">
           <Button
@@ -650,184 +653,89 @@ export function EnhancedQuestionDisplay({
   const renderImageWithQuestion = (
     imageItem: QuestionItem,
     questionItem: QuestionItem
-  ) => (
-    <div className="w-full max-w-4xl mx-auto p-6 space-y-6">
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-        <div className="bg-brand-500 px-6 py-4">
-          <Badge variant="secondary" className="bg-white text-brand-700">
-            Question {currentQuestion} of {totalQuestions}
-          </Badge>
+  ) => {
+    const questionOptionLabels = getOptionLabels(questionItem);
+
+    return (
+      <div className="w-full max-w-4xl mx-auto p-6 space-y-6">
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+          <div className="bg-progress-500 px-6 py-4">
+            <Badge variant="secondary" className="bg-white text-progress-700">
+              Study the Image
+            </Badge>
+          </div>
+          <div className="p-6">
+            {imageItem.content && renderImage(imageItem.content, "up")}
+          </div>
         </div>
 
-        <div className="p-8 space-y-6">
-          {/* Render image above question if position is 'up' */}
-          {imageItem.imagePosition === "up" && imageItem.imageUrl && (
-            <div className="mb-6">{renderImage(imageItem.imageUrl, "up")}</div>
-          )}
-
-          <h2 className="text-xl font-semibold text-gray-900 leading-relaxed">
-            {parseTextWithUnderlines(questionItem.content)}
-          </h2>
-
-          {/* Render image below question if position is 'down' */}
-          {imageItem.imagePosition === "down" && imageItem.imageUrl && (
-            <div className="mt-6">
-              {renderImage(imageItem.imageUrl, "down")}
-            </div>
-          )}
-
-          {questionItem.options && questionItem.options.length > 0 && (
-            <div className="space-y-4 mt-6">
-              {questionItem.options.map((option, index) => {
-                const optionLabel = optionLabels[index];
-                const isSelected = selectedAnswer === optionLabel;
-
-                return (
-                  <button
-                    key={index}
-                    onClick={() => handleAnswerSelect(optionLabel)}
-                    className={cn(
-                      "w-full text-left p-4 rounded-lg border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-                      isSelected
-                        ? "border-selected-500 bg-selected-50 text-selected-900 shadow-md"
-                        : "border-gray-200 hover:border-brand-300 hover:bg-brand-25 hover:shadow-sm"
-                    )}
-                    disabled={isSubmitting}
-                  >
-                    <div className="flex items-start space-x-3">
-                      <span
-                        className={cn(
-                          "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold",
-                          isSelected
-                            ? "bg-selected-500 text-white"
-                            : "bg-gray-100 text-gray-600"
-                        )}
-                      >
-                        {optionLabel}
-                      </span>
-                      <span className="text-base leading-relaxed pt-1">
-                        {parseTextWithUnderlines(option)}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-        <div className="flex items-center justify-between">
-          <Button
-            onClick={handlePrevious}
-            disabled={!canGoPrevious || isSubmitting}
-            variant="secondary"
-            className={cn(
-              "flex items-center space-x-2",
-              (!canGoPrevious || isSubmitting) &&
-                "opacity-50 cursor-not-allowed"
-            )}
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-            <span>Previous</span>
-          </Button>
-
-          <div className="flex items-center space-x-3">
-            <span className="text-sm text-gray-600">
-              {currentQuestion} / {totalQuestions}
-            </span>
-            {selectedAnswer && (
-              <Badge className="bg-correct-500 text-white">
-                <svg
-                  className="w-3 h-3 mr-1"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                Answered
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+          <div className="bg-brand-500 px-6 py-4">
+            <div className="flex items-center justify-between">
+              <Badge variant="secondary" className="bg-white text-brand-700">
+                Question {currentQuestion} of {totalQuestions}
               </Badge>
-            )}
+            </div>
           </div>
 
-          {isLastQuestion ? (
+          <div className="p-8">
+            <h2 className="text-xl font-semibold text-gray-900 mb-6 leading-relaxed">
+              {parseTextWithUnderlines(questionItem.content)}
+            </h2>
+
+            {questionItem.options && questionItem.options.length > 0 && (
+              <div className="space-y-4">
+                {questionItem.options.map((option, index) => {
+                  const optionLabel = questionOptionLabels[index];
+                  const isSelected = selectedAnswer === optionLabel;
+
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => handleAnswerSelect(optionLabel)}
+                      className={cn(
+                        "w-full text-left p-4 rounded-lg border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
+                        isSelected
+                          ? "border-selected-500 bg-selected-50 text-selected-900 shadow-md"
+                          : "border-gray-200 hover:border-brand-300 hover:bg-brand-25 hover:shadow-sm"
+                      )}
+                      disabled={isSubmitting}
+                    >
+                      <div className="flex items-start space-x-3">
+                        <span
+                          className={cn(
+                            "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold",
+                            isSelected
+                              ? "bg-selected-500 text-white"
+                              : "bg-gray-100 text-gray-600"
+                          )}
+                        >
+                          {optionLabel}
+                        </span>
+                        <span className="text-base leading-relaxed pt-1">
+                          {parseTextWithUnderlines(option)}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
             <Button
-              onClick={onSubmitQuiz}
-              disabled={isSubmitting}
-              className={cn(
-                "flex items-center space-x-2 bg-correct-500 hover:bg-correct-600",
-                isSubmitting && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              {isSubmitting ? (
-                <>
-                  <svg
-                    className="animate-spin w-5 h-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                  <span>Submitting...</span>
-                </>
-              ) : (
-                <>
-                  <span>Submit Quiz</span>
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                </>
-              )}
-            </Button>
-          ) : (
-            <Button
-              onClick={handleNext}
-              disabled={!canGoNext || isSubmitting}
+              onClick={handlePrevious}
+              disabled={!canGoPrevious || isSubmitting}
+              variant="secondary"
               className={cn(
                 "flex items-center space-x-2",
-                (!canGoNext || isSubmitting) && "opacity-50 cursor-not-allowed"
+                (!canGoPrevious || isSubmitting) &&
+                  "opacity-50 cursor-not-allowed"
               )}
             >
-              <span>Next</span>
               <svg
                 className="w-5 h-5"
                 fill="none"
@@ -838,15 +746,116 @@ export function EnhancedQuestionDisplay({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M9 5l7 7-7 7"
+                  d="M15 19l-7-7 7-7"
                 />
               </svg>
+              <span>Previous</span>
             </Button>
-          )}
+
+            <div className="flex items-center space-x-3">
+              <span className="text-sm text-gray-600">
+                {currentQuestion} / {totalQuestions}
+              </span>
+              {selectedAnswer && (
+                <Badge className="bg-correct-500 text-white">
+                  <svg
+                    className="w-3 h-3 mr-1"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  Answered
+                </Badge>
+              )}
+            </div>
+
+            {isLastQuestion ? (
+              <Button
+                onClick={onSubmitQuiz}
+                disabled={isSubmitting}
+                className={cn(
+                  "flex items-center space-x-2 bg-correct-500 hover:bg-correct-600",
+                  isSubmitting && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                {isSubmitting ? (
+                  <>
+                    <svg
+                      className="animate-spin w-5 h-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    <span>Submitting...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Submit Quiz</span>
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </>
+                )}
+              </Button>
+            ) : (
+              <Button
+                onClick={handleNext}
+                disabled={!canGoNext || isSubmitting}
+                className={cn(
+                  "flex items-center space-x-2",
+                  (!canGoNext || isSubmitting) &&
+                    "opacity-50 cursor-not-allowed"
+                )}
+              >
+                <span>Next</span>
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Main render logic
   if (currentItem.type === "passage") {
@@ -854,22 +863,18 @@ export function EnhancedQuestionDisplay({
   }
 
   if (currentItem.type === "header") {
-    // Check if next item is a question to pair with
     const nextItem = questionItems[currentIndex + 1];
     if (nextItem && nextItem.type === "question") {
       return renderHeaderWithQuestion(currentItem.content, nextItem);
     }
-    // If no next question, render as regular question (fallback)
     return renderRegularQuestion(currentItem);
   }
 
   if (currentItem.type === "image") {
-    // Check if next item is a question to pair with
     const nextItem = questionItems[currentIndex + 1];
     if (nextItem && nextItem.type === "question") {
       return renderImageWithQuestion(currentItem, nextItem);
     }
-    // If no next question, render as regular question (fallback)
     return renderRegularQuestion(currentItem);
   }
 

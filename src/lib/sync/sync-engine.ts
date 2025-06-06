@@ -11,7 +11,7 @@ import type {
   SyncResult,
   QuizAttempt,
 } from "../../types/app.js";
-import { isElectron, serializeData } from "../../utils/lib.js";
+import { isElectron } from "../../utils/lib.js";
 
 export type SyncTrigger =
   | "startup"
@@ -581,21 +581,21 @@ export class SyncEngine {
             lastActiveAt: rawAttempt.last_active_at,
           };
 
-          await this.remoteDb.syncQuizAttempt(attempt);
+          // await this.remoteDb.syncQuizAttempt(attempt);
 
-          await this.localDb.runRawSQL(
-            "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ?, sync_error = NULL WHERE id = ?",
-            [new Date().toISOString(), attempt.id]
-          );
+          // await this.localDb.runRawSQL(
+          //   "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ?, sync_error = NULL WHERE id = ?",
+          //   [new Date().toISOString(), attempt.id]
+          // );
 
           pushedRecords++;
 
-          await this.logSyncOperation(
-            "push",
-            "quiz_attempts",
-            attempt.id,
-            "success"
-          );
+          // await this.logSyncOperation(
+          //   "push",
+          //   "quiz_attempts",
+          //   attempt.id,
+          //   "success"
+          // );
         } catch (error) {
           await this.logSyncOperation(
             "push",
@@ -647,7 +647,6 @@ export class SyncEngine {
         console.log("batch", batch);
         for (const rawAttempt of batch) {
           try {
-            // Transform raw SQL result (snake_case) to proper QuizAttempt format (camelCase)
             const attempt: QuizAttempt = {
               id: rawAttempt.id,
               userId: rawAttempt.user_id,
@@ -667,20 +666,23 @@ export class SyncEngine {
               lastActiveAt: rawAttempt.last_active_at,
             };
 
-            await this.remoteDb.syncQuizAttempt(attempt);
+            console.log("did transform");
+            // await this.remoteDb.syncQuizAttempt(attempt);
 
-            await this.localDb.runRawSQL(
-              "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ? WHERE id = ?",
-              [new Date().toISOString(), attempt.id]
-            );
+            // await this.localDb.runRawSQL(
+            //   "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ? WHERE id = ?",
+            //   [new Date().toISOString(), attempt.id]
+            // );
+
+            console.log("did sync");
 
             pushedRecords++;
-            await this.logSyncOperation(
-              "push",
-              "quiz_attempts",
-              attempt.id,
-              "success"
-            );
+            // await this.logSyncOperation(
+            //   "push",
+            //   "quiz_attempts",
+            //   attempt.id,
+            //   "success"
+            // );
           } catch (error) {
             await this.logSyncOperation(
               "push",
@@ -778,12 +780,14 @@ export class SyncEngine {
                   lastLogin: user.lastLogin?.toISOString() || null,
                 };
 
-                await this.localDb.createUser(serializeData(localUser));
+                await this.localDb.createUser(localUser);
                 pulledRecords++;
               } catch (error) {
                 console.warn("Failed to create user:", user.studentCode, error);
               }
             }
+
+            console.log("SyncEngine: Pulled users", syncData.users);
 
             // Insert subjects
             for (const subject of syncData.subjects) {
@@ -800,7 +804,7 @@ export class SyncEngine {
                   isActive: subject.isActive,
                 };
 
-                await this.localDb.createSubject(serializeData(localSubject));
+                await this.localDb.createSubject(localSubject);
                 pulledRecords++;
               } catch (error) {
                 console.warn(
@@ -831,7 +835,7 @@ export class SyncEngine {
                   isActive: question.isActive,
                 };
 
-                await this.localDb.createQuestion(serializeData(localQuestion));
+                await this.localDb.createQuestion(localQuestion);
                 pulledRecords++;
               } catch (error) {
                 console.warn("Failed to create question:", question.id, error);

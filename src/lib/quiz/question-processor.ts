@@ -52,7 +52,6 @@ export class QuestionProcessor {
           i++;
         }
       } else {
-        // Regular question
         const questionItem = this.createRegularQuestion(question);
         questionItems.push(questionItem);
         actualQuestions.push(questionItem);
@@ -353,5 +352,59 @@ export class QuestionProcessor {
       isValid: issues.length === 0,
       issues,
     };
+  }
+
+  /**
+   * Find the first answerable question index
+   */
+  static findFirstAnswerableIndex(questionItems: QuestionItem[]): number {
+    for (let i = 0; i < questionItems.length; i++) {
+      if (questionItems[i].type === "question") {
+        return i;
+      }
+      // For header or image, check if it's paired with a question
+      if (
+        (questionItems[i].type === "header" ||
+          questionItems[i].type === "image") &&
+        i + 1 < questionItems.length &&
+        questionItems[i + 1].type === "question"
+      ) {
+        return i; // Return header/image index for paired display
+      }
+    }
+    return 0; // Fallback to first item
+  }
+
+  /**
+   * Get the answerable question from the current index
+   * Handles both standalone questions and header/image-paired questions
+   */
+  static getAnswerableQuestion(
+    questionItems: QuestionItem[],
+    currentIndex: number
+  ): QuestionItem | null {
+    if (currentIndex < 0 || currentIndex >= questionItems.length) {
+      return null;
+    }
+
+    const currentItem = questionItems[currentIndex];
+
+    if (currentItem.type === "question") {
+      return currentItem;
+    }
+
+    if (currentItem.type === "header" || currentItem.type === "image") {
+      // Check if next item is a question (paired structure)
+      const nextIndex = currentIndex + 1;
+      if (
+        nextIndex < questionItems.length &&
+        questionItems[nextIndex].type === "question"
+      ) {
+        return questionItems[nextIndex];
+      }
+    }
+
+    // Passages and other non-answerable items
+    return null;
   }
 }

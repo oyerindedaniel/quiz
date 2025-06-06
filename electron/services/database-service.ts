@@ -14,7 +14,7 @@ import type {
   NewQuestion,
   NewQuizAttempt,
 } from "../../src/lib/database/local-schema.js";
-import {
+import type {
   ImportResult,
   AuthResult,
   AdminAuthResult,
@@ -28,7 +28,7 @@ import {
   SyncOperationType,
   UserSeedData,
 } from "../../src/types/app.js";
-import { SyncTrigger } from "../../src/lib/sync/sync-engine.js";
+import type { SyncTrigger } from "../../src/lib/sync/sync-engine.js";
 
 export class MainDatabaseService {
   private localDb: LocalDatabaseService;

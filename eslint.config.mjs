@@ -12,12 +12,29 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
+    ignores: [
+      // Exclude compiled output directories
+      "dist/**/*",
+      "out/**/*",
+      ".next/**/*",
+      "release/**/*",
+      // Exclude compiled JavaScript files that are generated from TypeScript
+      "src/**/*.js",
+      "electron/**/*.js",
+      // Exclude node_modules and other build artifacts
+      "node_modules/**/*",
+      "*.config.js",
+      "*.config.mjs",
+    ],
+  },
+  {
     rules: {
       // Disable problematic rules for Electron build
       "@typescript-eslint/no-unused-vars": "warn",
       "@typescript-eslint/no-explicit-any": "warn",
       "react/no-unescaped-entities": "warn",
       "react-hooks/exhaustive-deps": "warn",
+      "@next/next/no-img-element": "warn",
       // Allow unused variables with underscore prefix
       "@typescript-eslint/no-unused-vars": [
         "warn",
@@ -27,6 +44,8 @@ const eslintConfig = [
           caughtErrorsIgnorePattern: "^_",
         },
       ],
+      // Allow require() imports in compiled files and specific contexts
+      "@typescript-eslint/no-require-imports": "off",
     },
   },
 ];

@@ -13,9 +13,6 @@ class SQLiteManager {
         this.sqlite = null;
         this.dbPath = dbPath;
     }
-    /**
-     * Get singleton instance
-     */
     static getInstance(dbPath) {
         if (!SQLiteManager.instance) {
             if (!dbPath) {
@@ -25,9 +22,6 @@ class SQLiteManager {
         }
         return SQLiteManager.instance;
     }
-    /**
-     * Initialize SQLite database with optimized settings
-     */
     async initialize() {
         if (this.db) {
             return this.db;
@@ -50,31 +44,21 @@ class SQLiteManager {
             throw error;
         }
     }
-    /**
-     * Get database instance
-     */
     getDatabase() {
         if (!this.db) {
             throw new Error("Database not initialized. Call initialize() first.");
         }
         return this.db;
     }
-    /**
-     * Check if database is connected
-     */
     isConnected() {
         return this.db !== null && this.sqlite !== null;
     }
-    /**
-     * Create tables with proper indexes
-     */
     async createTables() {
         if (!this.sqlite) {
             throw new Error("SQLite instance not available");
         }
         this.sqlite.pragma("foreign_keys = ON");
         const createTableQueries = [
-            // Users table
             `CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -88,7 +72,6 @@ class SQLiteManager {
         is_active INTEGER DEFAULT 1,
         last_login TEXT
       )`,
-            // Subjects table
             `CREATE TABLE IF NOT EXISTS subjects (
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL,
@@ -100,7 +83,6 @@ class SQLiteManager {
         updated_at TEXT NOT NULL,
         is_active INTEGER DEFAULT 1
       )`,
-            // Questions table
             `CREATE TABLE IF NOT EXISTS questions (
          id TEXT PRIMARY KEY,
   subject_id TEXT NOT NULL,
@@ -115,7 +97,6 @@ class SQLiteManager {
   is_active INTEGER DEFAULT 1,
   FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
       )`,
-            // Quiz attempts table
             `CREATE TABLE IF NOT EXISTS quiz_attempts (
          id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -136,7 +117,6 @@ class SQLiteManager {
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
       )`,
-            // Sync log table
             `CREATE TABLE IF NOT EXISTS sync_log (
         id TEXT PRIMARY KEY,
         operation_type TEXT NOT NULL,
@@ -147,7 +127,6 @@ class SQLiteManager {
   attempted_at TEXT NOT NULL,
   completed_at TEXT
       )`,
-            // Sync timestamps table
             `CREATE TABLE IF NOT EXISTS sync_timestamps (
        table_name TEXT PRIMARY KEY,
   last_pull_sync TEXT,
@@ -182,9 +161,6 @@ class SQLiteManager {
             throw error;
         }
     }
-    /**
-     * Execute raw SQL query
-     */
     executeRawSQL(queryText, params = []) {
         if (!this.sqlite) {
             throw new Error("SQLite instance not available");
@@ -198,9 +174,6 @@ class SQLiteManager {
             throw error;
         }
     }
-    /**
-     * Execute raw SQL statement (INSERT, UPDATE, DELETE)
-     */
     runRawSQL(queryText, params = []) {
         if (!this.sqlite) {
             throw new Error("SQLite instance not available");
@@ -214,9 +187,6 @@ class SQLiteManager {
             throw error;
         }
     }
-    /**
-     * Check database integrity
-     */
     checkIntegrity() {
         if (!this.sqlite) {
             return false;
@@ -230,9 +200,6 @@ class SQLiteManager {
             return false;
         }
     }
-    /**
-     * Create database backup
-     */
     async backup(backupPath) {
         if (!this.sqlite) {
             return { success: false, error: "Database not initialized" };
@@ -247,9 +214,6 @@ class SQLiteManager {
             return { success: false, error: errorMessage };
         }
     }
-    /**
-     * Force WAL checkpoint
-     */
     checkpoint() {
         if (!this.sqlite) {
             throw new Error("SQLite instance not available");
@@ -263,9 +227,6 @@ class SQLiteManager {
             throw error;
         }
     }
-    /**
-     * Get database statistics
-     */
     getStats() {
         if (!this.sqlite) {
             return { connected: false };
@@ -285,9 +246,6 @@ class SQLiteManager {
             return { connected: false, error: error };
         }
     }
-    /**
-     * Close database connection
-     */
     close() {
         if (this.sqlite) {
             this.sqlite.close();

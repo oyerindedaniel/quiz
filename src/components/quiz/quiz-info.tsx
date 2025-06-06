@@ -247,7 +247,7 @@ export function QuizInfo({
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                {/* <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-500 uppercase tracking-wide">
                     Class Level
                   </label>
@@ -256,7 +256,7 @@ export function QuizInfo({
                       {formatClassName(subject.class)}
                     </Badge>
                   </div>
-                </div>
+                </div> */}
               </div>
 
               {subject.description && (

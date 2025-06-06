@@ -602,7 +602,6 @@ export class RemoteDatabaseService {
     const db = this.getDb();
 
     try {
-      // Validate required fields before syncing
       if (!attempt.userId || !attempt.subjectId) {
         console.warn(
           `Quiz attempt ${attempt.id} has missing required fields (userId: ${attempt.userId}, subjectId: ${attempt.subjectId}), skipping sync`
@@ -629,16 +628,13 @@ export class RemoteDatabaseService {
 
       let startedAt = safeDate(attempt.startedAt);
 
-      // Handle invalid or missing startedAt timestamps
       if (!startedAt) {
         console.warn(
           `Quiz attempt ${attempt.id} has invalid startedAt (${attempt.startedAt}), using updatedAt or current time as fallback`
         );
 
-        // Try to use updatedAt as fallback
         startedAt = safeDate(attempt.updatedAt);
 
-        // If updatedAt is also invalid, use current time
         if (!startedAt) {
           startedAt = new Date();
           console.warn(

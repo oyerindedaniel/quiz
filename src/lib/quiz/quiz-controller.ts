@@ -8,6 +8,7 @@ import type {
   SubmissionResult,
 } from "@/types/app";
 import type { NewQuizAttempt } from "../database/local-schema";
+import { QuestionProcessor } from "./question-processor";
 
 export class QuizController {
   private ipcDb: IPCDatabaseService;
@@ -473,7 +474,9 @@ export class QuizController {
 
     return {
       totalScore: correctAnswers,
-      totalQuestions: questions.length,
+      // TODO: this is a hack to get the total questions
+      totalQuestions:
+        QuestionProcessor.processQuestions(questions).actualQuestions.length,
       correctAnswers,
     };
   }
@@ -501,39 +504,5 @@ export class QuizController {
   isQuestionAnswered(questionId: string): boolean {
     if (!this.currentSession) return false;
     return questionId in this.currentSession.answers;
-  }
-
-  /**
-   * Get question navigation info
-   */
-  getNavigationInfo(): {
-    canGoNext: boolean;
-    canGoPrevious: boolean;
-    isFirstQuestion: boolean;
-    isLastQuestion: boolean;
-    questionsAnswered: number[];
-  } {
-    if (!this.currentSession) {
-      return {
-        canGoNext: false,
-        canGoPrevious: false,
-        isFirstQuestion: true,
-        isLastQuestion: true,
-        questionsAnswered: [],
-      };
-    }
-
-    const { questions, currentQuestionIndex, answers } = this.currentSession;
-    const questionsAnswered = questions
-      .map((q, index) => (answers[q.id] ? index : -1))
-      .filter((index) => index >= 0);
-
-    return {
-      canGoNext: currentQuestionIndex < questions.length - 1,
-      canGoPrevious: currentQuestionIndex > 0,
-      isFirstQuestion: currentQuestionIndex === 0,
-      isLastQuestion: currentQuestionIndex === questions.length - 1,
-      questionsAnswered,
-    };
   }
 }

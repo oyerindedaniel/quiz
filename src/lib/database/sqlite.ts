@@ -156,9 +156,9 @@ export class SQLiteManager {
       // Sync log table
       `CREATE TABLE IF NOT EXISTS sync_log (
         id TEXT PRIMARY KEY,
-  operation_type TEXT NOT NULL,
-  table_name TEXT NOT NULL,
-  record_id TEXT NOT NULL,
+        operation_type TEXT NOT NULL,
+          table_name TEXT NOT NULL,
+         record_id TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('success', 'failed', 'pending')),
   error_message TEXT,
   attempted_at TEXT NOT NULL,
@@ -332,25 +332,4 @@ export class SQLiteManager {
     this.db = null;
     console.log("SQLite database connection closed");
   }
-}
-
-/**
- * Helper function to get SQLite database path
- */
-export function getSQLiteDbPath(): string {
-  // In Electron, we'll get the path from the main process
-  if (typeof window !== "undefined" && !!window.electronAPI) {
-    // In Electron environment, this should be handled by the main process
-    // The actual path will be resolved using app.getPath("userData")
-    // This is just a placeholder - the real path will be set by LocalDatabaseService
-    return "quiz_app.db";
-  }
-
-  // Fallback for development/testing
-  return "./quiz_app.db";
-}
-
-export function createSQLiteManager(): SQLiteManager {
-  const dbPath = getSQLiteDbPath();
-  return SQLiteManager.getInstance(dbPath);
 }

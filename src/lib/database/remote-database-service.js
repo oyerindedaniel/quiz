@@ -49,9 +49,6 @@ class RemoteDatabaseService {
         }
         return RemoteDatabaseService.instance;
     }
-    /**
-     * Initialize the remote database connection
-     */
     async initialize(connectionString) {
         if (this.db) {
             return;
@@ -62,22 +59,15 @@ class RemoteDatabaseService {
         this.neonManager = neon_js_1.NeonManager.getInstance(connectionString || process.env.NEON_DATABASE_URL);
         this.db = await this.neonManager.initialize();
     }
-    /**
-     * Get the database instance
-     */
     getDb() {
         if (!this.db) {
             throw new Error("Remote database not initialized. Call initialize() first.");
         }
         return this.db;
     }
-    /**
-     * Check if database is connected
-     */
     isConnected() {
         return this.neonManager?.isConnected() ?? false;
     }
-    // User operations (Remote)
     async findUserByStudentCode(studentCode) {
         const db = this.getDb();
         const users = await db
@@ -153,7 +143,6 @@ class RemoteDatabaseService {
             .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.users.isActive, true))
             .orderBy(remote_schema_js_1.remoteSchema.users.studentCode);
     }
-    // Subject operations (Remote)
     async findSubjectByCode(subjectCode) {
         const db = this.getDb();
         const subjects = await db
@@ -219,7 +208,6 @@ class RemoteDatabaseService {
             .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.subjects.isActive, true))
             .orderBy(remote_schema_js_1.remoteSchema.subjects.name);
     }
-    // Question operations (Remote)
     async getQuestionsForSubject(subjectId) {
         const db = this.getDb();
         return db
@@ -246,9 +234,6 @@ class RemoteDatabaseService {
             .limit(1);
         return questions[0] || null;
     }
-    /**
-     * Bulk create questions for better performance
-     */
     async bulkCreateQuestions(questions) {
         if (questions.length === 0) {
             return { success: true, created: 0 };
@@ -276,12 +261,8 @@ class RemoteDatabaseService {
             };
         }
     }
-    /**
-     * Update subject question count
-     */
     async updateSubjectQuestionCount(subjectCode) {
         const db = this.getDb();
-        // Only count answerable questions (not passages and headers)
         const questionCount = await db
             .select()
             .from(remote_schema_js_1.remoteSchema.questions)
@@ -296,10 +277,6 @@ class RemoteDatabaseService {
             .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.subjects.subjectCode, subjectCode));
         console.log(`Updated question count for subject ${subjectCode}: ${count} answerable questions`);
     }
-    /**
-     * Bulk upsert questions for idempotent seeding
-     * Uses question text and order to detect duplicates
-     */
     async bulkUpsertQuestions(questions) {
         if (questions.length === 0) {
             return { success: true, created: 0, updated: 0 };
@@ -381,7 +358,6 @@ class RemoteDatabaseService {
             .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.isActive, true))
             .orderBy(remote_schema_js_1.remoteSchema.questions.questionOrder);
     }
-    // Quiz attempt operations (Remote)
     async findIncompleteAttempt(userId, subjectId) {
         const db = this.getDb();
         const attempts = await db
@@ -447,9 +423,6 @@ class RemoteDatabaseService {
             .from(remote_schema_js_1.remoteSchema.quizAttempts)
             .orderBy(remote_schema_js_1.remoteSchema.quizAttempts.startedAt);
     }
-    /**
-     * Sync a quiz attempt from local to remote (used by sync engine)
-     */
     async syncQuizAttempt(attempt) {
         const db = this.getDb();
         try {
@@ -514,9 +487,6 @@ class RemoteDatabaseService {
             throw new Error(`Failed to sync quiz attempt: ${error.message}`);
         }
     }
-    /**
-     * Pull latest data for initial sync (used by sync engine)
-     */
     async pullLatestData() {
         const db = this.getDb();
         try {
@@ -546,7 +516,6 @@ class RemoteDatabaseService {
             throw new Error(`Failed to pull latest data: ${error.message}`);
         }
     }
-    // Sync operations
     async getRecordsModifiedAfter(tableName, timestamp) {
         const db = this.getDb();
         switch (tableName) {
@@ -615,7 +584,6 @@ class RemoteDatabaseService {
         }
         return result[0]?.updatedAt?.toISOString() || null;
     }
-    // Database management
     async checkConnection() {
         try {
             if (!this.neonManager) {
@@ -643,12 +611,6 @@ class RemoteDatabaseService {
             };
         }
     }
-    /**
-     * User regulation methods for admin control
-     */
-    /**
-     * Toggle active state for all users
-     */
     async toggleAllUsersActive(isActive) {
         try {
             const db = this.getDb();
@@ -672,9 +634,6 @@ class RemoteDatabaseService {
             };
         }
     }
-    /**
-     * Toggle active state for a specific user
-     */
     async toggleUserActive(studentCode, isActive) {
         try {
             const db = this.getDb();
@@ -699,13 +658,9 @@ class RemoteDatabaseService {
             };
         }
     }
-    /**
-     * Change user PIN
-     */
     async changeUserPin(studentCode, newPin) {
         try {
             const db = this.getDb();
-            // Hash the new PIN
             const bcrypt = await Promise.resolve().then(() => __importStar(require("bcryptjs")));
             const hashedPin = await bcrypt.hash(newPin, 10);
             const result = await db
@@ -729,9 +684,6 @@ class RemoteDatabaseService {
             };
         }
     }
-    /**
-     * Update user last login timestamp
-     */
     async updateUserLastLogin(studentCode) {
         try {
             const db = this.getDb();
@@ -747,9 +699,6 @@ class RemoteDatabaseService {
             console.error("RemoteDatabaseService: Error updating user last login:", error);
         }
     }
-    /**
-     * Cleanup database connections
-     */
     async cleanup() {
         try {
             if (this.neonManager) {
@@ -761,10 +710,6 @@ class RemoteDatabaseService {
             console.error("RemoteDatabaseService: Cleanup error:", error);
         }
     }
-    // ===== ADMIN OPERATIONS =====
-    /**
-     * Find admin user by username for authentication
-     */
     async findAdminByUsername(username) {
         try {
             if (!this.db) {
@@ -782,9 +727,6 @@ class RemoteDatabaseService {
             throw error;
         }
     }
-    /**
-     * Find admin user by ID
-     */
     async findAdminById(adminId) {
         try {
             if (!this.db) {
@@ -802,9 +744,6 @@ class RemoteDatabaseService {
             throw error;
         }
     }
-    /**
-     * Update admin last login timestamp
-     */
     async updateAdminLastLogin(adminId) {
         const db = this.getDb();
         const now = new Date();
@@ -816,7 +755,6 @@ class RemoteDatabaseService {
         })
             .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.admins.id, adminId));
     }
-    // Admin Dashboard Methods
     async getDashboardStats() {
         const db = this.getDb();
         const [users, subjects, questions, attempts] = await Promise.all([
@@ -837,7 +775,6 @@ class RemoteDatabaseService {
                 .from(remote_schema_js_1.remoteSchema.quizAttempts)
                 .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.quizAttempts.submitted, true)),
         ]);
-        // For now, we'll return 0 for onlineUsers and pendingSyncs as these would require additional tracking
         return {
             totalUsers: users.length,
             totalSubjects: subjects.length,
@@ -935,26 +872,23 @@ class RemoteDatabaseService {
             correctAnswer: remote_schema_js_1.remoteSchema.questions.answer,
             createdAt: remote_schema_js_1.remoteSchema.questions.createdAt,
             updatedAt: remote_schema_js_1.remoteSchema.questions.updatedAt,
-            // Note: We'll need to add these fields to the schema or derive them
-            // For now, we'll provide default values
         })
             .from(remote_schema_js_1.remoteSchema.questions)
             .leftJoin(remote_schema_js_1.remoteSchema.subjects, (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.subjectId, remote_schema_js_1.remoteSchema.subjects.id))
             .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.isActive, true))
             .orderBy(remote_schema_js_1.remoteSchema.questions.createdAt);
-        // For now, return basic question data with placeholder stats
         return questionsQuery.map((row) => ({
             id: row.questionId,
             subjectId: row.subjectId,
             subjectName: row.subjectName || "Unknown Subject",
             questionText: row.questionText,
-            questionType: "multiple-choice", // Default value
-            difficulty: "medium", // Default value
+            questionType: "multiple-choice",
+            difficulty: "medium",
             correctAnswer: row.correctAnswer,
             createdAt: row.createdAt.toISOString(),
             updatedAt: row.updatedAt.toISOString(),
-            attemptCount: 0, // Would need to calculate from quiz attempts
-            correctRate: 0, // Would need to calculate from quiz attempts
+            attemptCount: 0,
+            correctRate: 0,
         }));
     }
     async getAnalyticsData() {
@@ -981,10 +915,8 @@ class RemoteDatabaseService {
         const userStats = new Map();
         for (const attempt of attemptsQuery) {
             if (attempt.submittedAt && attempt.score !== null) {
-                // Group by day
                 const date = attempt.submittedAt.toISOString().split("T")[0];
                 attemptsByDay.set(date, (attemptsByDay.get(date) || 0) + 1);
-                // Score distribution
                 const score = attempt.score;
                 if (score <= 40)
                     scoreRanges["0-40"]++;
@@ -994,7 +926,6 @@ class RemoteDatabaseService {
                     scoreRanges["61-80"]++;
                 else
                     scoreRanges["81-100"]++;
-                // Subject performance
                 const subjectName = attempt.subjectName || "Unknown";
                 if (!subjectStats.has(subjectName)) {
                     subjectStats.set(subjectName, { scores: [], count: 0 });
@@ -1002,7 +933,6 @@ class RemoteDatabaseService {
                 const subjectStat = subjectStats.get(subjectName);
                 subjectStat.scores.push(score);
                 subjectStat.count++;
-                // User performance
                 const userId = attempt.userId;
                 if (!userStats.has(userId)) {
                     userStats.set(userId, {
@@ -1043,9 +973,6 @@ class RemoteDatabaseService {
             topPerformers,
         };
     }
-    /**
-     * Create a new admin user
-     */
     async createAdmin(adminData) {
         try {
             const db = this.getDb();
@@ -1103,10 +1030,6 @@ class RemoteDatabaseService {
             };
         }
     }
-    /**
-     * Delete quiz attempts for a specific user and subject
-     * This allows users to retake tests after admin intervention
-     */
     async deleteQuizAttempts(studentCode, subjectCode) {
         try {
             const db = this.getDb();
@@ -1150,10 +1073,6 @@ class RemoteDatabaseService {
             };
         }
     }
-    //TODO: Possible circular dependency
-    /**
-     * Get student credentials
-     */
     async getStudentCredentials() {
         try {
             const { ALL_STUDENTS } = await Promise.resolve().then(() => __importStar(require("../constants/students.js")));

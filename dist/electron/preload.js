@@ -82,9 +82,5 @@ const electronAPI = {
         toggleUserActive: (studentCode, isActive) => electron_1.ipcRenderer.invoke("admin:toggle-user-active", studentCode, isActive),
         changeUserPin: (studentCode, newPin) => electron_1.ipcRenderer.invoke("admin:change-user-pin", studentCode, newPin),
     },
-    // Remote operations (secure)
-    remote: {
-        bulkCreateQuestions: (questions) => electron_1.ipcRenderer.invoke("remote:bulk-create-questions", questions),
-    },
 };
 electron_1.contextBridge.exposeInMainWorld("electronAPI", electronAPI);

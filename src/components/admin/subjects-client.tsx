@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/utils/lib";
+import { downloadCSV, csvExtractors } from "@/utils/download";
 import {
   Select,
   SelectContent,
@@ -32,19 +33,8 @@ import {
   AlertCircle,
   Trophy,
   Users,
+  Download,
 } from "lucide-react";
-
-interface SubjectWithStats {
-  id: string;
-  subjectCode: string;
-  subjectName: string;
-  description: string;
-  createdAt: string;
-  updatedAt: string;
-  questionCount: number;
-  attemptCount: number;
-  averageScore: number;
-}
 
 export function SubjectsClient() {
   const {
@@ -123,6 +113,16 @@ export function SubjectsClient() {
     return { totalQuestions, totalAttempts, avgScore, activeSubjects };
   }, [subjects]);
 
+  const downloadSubjects = () => {
+    downloadCSV({
+      data: filteredSubjects,
+      headers: ["Subject Code", "Subject Name"],
+      extractValues: csvExtractors.subjects,
+      filename: `subjects-export-${new Date().toISOString().split("T")[0]}`,
+      successMessage: "Subjects data exported to CSV file",
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -145,18 +145,30 @@ export function SubjectsClient() {
             Manage subjects and view performance metrics
           </p>
         </div>
-        <Button
-          onClick={refresh}
-          variant="outline"
-          size="sm"
-          disabled={isLoading}
-          className="font-sans"
-        >
-          <RefreshCw
-            className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
-          />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={downloadSubjects}
+            variant="outline"
+            size="sm"
+            disabled={isLoading || !subjects?.length}
+            className="font-sans"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export CSV
+          </Button>
+          <Button
+            onClick={refresh}
+            variant="outline"
+            size="sm"
+            disabled={isLoading}
+            className="font-sans"
+          >
+            <RefreshCw
+              className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {error && (

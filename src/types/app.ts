@@ -113,16 +113,6 @@ export interface DatabaseUserData {
   gender: Gender;
 }
 
-// Quiz Flow Types
-export interface QuizSession {
-  attemptId: string;
-  questions: Question[];
-  currentQuestionIndex: number;
-  answers: Record<string, string>;
-  isResume: boolean;
-  elapsedTime?: number; // Accumulated time spent in seconds
-}
-
 export interface AnswerResult {
   success: boolean;
   nextQuestionIndex?: number;
@@ -524,9 +514,9 @@ export interface CSVRow {
   "Question Order": string;
 }
 
-export type QuestionType = "question" | "passage" | "header" | "image";
-
 export type ImagePosition = "up" | "down";
+
+export type QuestionType = "question" | "passage" | "header" | "image";
 
 export interface QuestionItem {
   question: Question;
@@ -542,6 +532,16 @@ export interface ProcessedQuizData {
   questionItems: QuestionItem[];
   actualQuestions: QuestionItem[]; // Only questions that can be answered
   totalQuestions: number; // Count of answerable questions
+}
+
+// Quiz Flow Types
+export interface QuizSession {
+  attemptId: string;
+  questions: Question[];
+  currentQuestionIndex: number;
+  answers: Record<string, string>;
+  isResume: boolean;
+  elapsedTime?: number; // Accumulated time spent in seconds
 }
 
 // Sync Engine Types

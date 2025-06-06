@@ -16,9 +16,6 @@ class CSVImportService {
     isElectron() {
         return typeof window !== "undefined" && !!window.electronAPI;
     }
-    /**
-     * Import questions from CSV file content with filename as subject code
-     */
     async importQuestionsFromCSV(csvContent, filename) {
         const results = {
             processed: 0,
@@ -46,9 +43,6 @@ class CSVImportService {
             return results;
         }
     }
-    /**
-     * Parse CSV content into structured data
-     */
     parseCSV(csvContent) {
         const lines = csvContent.split("\n").filter((line) => line.trim());
         if (lines.length < 2) {
@@ -97,14 +91,12 @@ class CSVImportService {
                 }
                 const values = this.parseCSVLine(lineContent);
                 if (values.length === headers.length) {
-                    // Normal row with correct column count
                     const row = this.createRowFromValues(headers, values, i);
                     if (row) {
                         rows.push(row);
                     }
                 }
                 else if (values.length < headers.length) {
-                    // Possible start of multiline content
                     const questionText = values[headers.indexOf("Question Text")] || "";
                     if (questionText.startsWith("[PASSAGE]") ||
                         questionText.startsWith("[HEADER]") ||
@@ -115,7 +107,6 @@ class CSVImportService {
                     }
                     else {
                         console.warn(`Row ${i + 1}: Column count mismatch (${values.length} vs ${headers.length}), trying to fix malformed CSV line`);
-                        // Try to fix common CSV issues like unquoted commas in text
                         const fixedLine = this.tryFixCSVLine(lineContent, headers.length);
                         if (fixedLine) {
                             const fixedValues = this.parseCSVLine(fixedLine);
@@ -141,9 +132,6 @@ class CSVImportService {
         }
         return rows;
     }
-    /**
-     * Create a CSVRow object from parsed values
-     */
     createRowFromValues(headers, values, rowIndex) {
         try {
             const row = {
@@ -157,7 +145,6 @@ class CSVImportService {
                 "Question Order": values[headers.indexOf("Question Order")] ||
                     (rowIndex + 1).toString(),
             };
-            // Add Option E if it exists in headers
             const optionEIndex = headers.indexOf("Option E");
             if (optionEIndex !== -1) {
                 row["Option E"] = values[optionEIndex] || "";
@@ -169,9 +156,6 @@ class CSVImportService {
             return null;
         }
     }
-    /**
-     * Parse a single CSV line, handling quoted values and embedded commas
-     */
     parseCSVLine(line) {
         const result = [];
         let current = "";
@@ -181,12 +165,10 @@ class CSVImportService {
             const char = line[i];
             if (char === '"') {
                 if (inQuotes && line[i + 1] === '"') {
-                    // Escaped quote within quoted field
                     current += '"';
                     i += 2;
                 }
                 else {
-                    // Toggle quote state
                     inQuotes = !inQuotes;
                     i++;
                 }
@@ -204,32 +186,22 @@ class CSVImportService {
         result.push(current);
         return result;
     }
-    /**
-     * Try to fix common CSV formatting issues
-     */
     tryFixCSVLine(line, expectedColumns) {
         try {
-            // Clean the line first - remove any BOM, extra whitespace, etc.
             let fixedLine = line.trim();
-            // Remove BOM if present
             if (fixedLine.charCodeAt(0) === 0xfeff) {
                 fixedLine = fixedLine.slice(1);
             }
-            // Split by comma first to see what we're working with
             const parts = fixedLine.split(",");
             if (parts.length <= expectedColumns) {
-                return null; // Can't fix if we don't have enough parts
+                return null;
             }
-            // Method 1: Fix date patterns with commas
-            // Match date patterns with commas (day month, year)
             const datePattern = /(\b\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+,\s*\d{4})/g;
             fixedLine = fixedLine.replace(datePattern, '"$1"');
-            // Verify the fix worked
             let fixedParts = this.parseCSVLine(fixedLine);
             if (fixedParts.length === expectedColumns) {
                 return fixedLine;
             }
-            // Method 2: Try to fix by removing trailing empty columns
             if (parts.length > expectedColumns) {
                 const trimmedParts = parts.slice(0, expectedColumns);
                 const trimmedLine = trimmedParts.join(",");
@@ -238,7 +210,6 @@ class CSVImportService {
                     return trimmedLine;
                 }
             }
-            // Method 3: Look for patterns where there might be an extra comma at the end
             if (fixedLine.endsWith(",")) {
                 const trimmedLine = fixedLine.slice(0, -1);
                 fixedParts = this.parseCSVLine(trimmedLine);
@@ -252,9 +223,6 @@ class CSVImportService {
             return null;
         }
     }
-    /**
-     * Ensure subject exists, create if necessary
-     */
     async ensureSubjectExists(subjectCode, results) {
         let subject;
         try {
@@ -311,9 +279,6 @@ class CSVImportService {
         }
         return subject.id;
     }
-    /**
-     * Process all questions in bulk
-     */
     async processQuestionsInBulk(subjectId, subjectCode, rows, results) {
         const questionsToCreate = [];
         for (const row of rows) {
@@ -346,27 +311,24 @@ class CSVImportService {
                 else {
                     results.questions.regular++;
                 }
-                // TODO: passage, header, image should not have a question order
                 let questionOrder;
                 if (row["Question Order"] && row["Question Order"].trim()) {
+                    console.log("questionOrder", row["Question Order"]);
                     questionOrder = parseInt(row["Question Order"]);
                 }
                 else {
-                    // For special items (passage/header/image), uses a high number to sort them properly
-                    // We'll use row index + 1000 to ensure they appear in the right sequence
                     questionOrder = results.processed + 1000;
                 }
                 if (questionType === "passage" ||
                     questionType === "header" ||
                     questionType === "image") {
-                    // Special questions (passage/header/image) - no validation needed
                     questionsToCreate.push({
                         id: (0, uuid_1.v4)(),
                         subjectId,
                         subjectCode,
                         text: `[${questionType.toUpperCase()}] ${processedText}`,
-                        options: JSON.stringify([]), // Empty options for special questions
-                        answer: "", // No correct answer for special questions
+                        options: JSON.stringify([]),
+                        answer: "",
                         questionOrder,
                     });
                 }
@@ -403,9 +365,6 @@ class CSVImportService {
             console.log(`Bulk created ${questionsToCreate.length} questions for subject ${subjectCode}`);
         }
     }
-    /**
-     * Bulk create questions
-     */
     async bulkCreateQuestions(questions) {
         try {
             if (this.isRemote) {
@@ -422,12 +381,7 @@ class CSVImportService {
             throw error;
         }
     }
-    /**
-     * Process image content to extract URL and position
-     */
     processImageContent(imageText) {
-        // Expected format: "position:up\nhttps://example.com/image.jpg"
-        // or "position:down\nhttps://example.com/image.jpg"
         const lines = imageText
             .trim()
             .split("\n")
@@ -453,18 +407,9 @@ class CSVImportService {
         }
         return `position:${position}\n${imageUrl}`;
     }
-    /**
-     * Process text content to preserve underline markers
-     * Converts **text** markers to a format that can be rendered in UI
-     */
     processTextContent(text) {
-        // Preserve the **text** markers as-is for UI processing
-        // The UI component will handle the actual rendering
         return text.trim();
     }
-    /**
-     * Validate regular question data
-     */
     validateRegularQuestion(row) {
         const requiredFields = [
             "Option A",
@@ -487,9 +432,6 @@ class CSVImportService {
             throw new Error(`Correct Answer must be ${validAnswers.join(", ")}${hasOptionE ? "" : ". Add Option E to use answer E"}`);
         }
     }
-    /**
-     * Load and import CSV file from file system
-     */
     async importFromFile(filePath) {
         try {
             if (this.isElectron()) {

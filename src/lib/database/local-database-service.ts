@@ -13,6 +13,7 @@ import type {
 } from "./local-schema.js";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { isElectron } from "../../utils/lib.js";
+import { app } from "electron";
 
 export class LocalDatabaseService {
   private static instance: LocalDatabaseService;
@@ -36,20 +37,7 @@ export class LocalDatabaseService {
       return;
     }
 
-    let dbPath: string;
-    if (isElectron()) {
-      const userDataPath = await window.electronAPI.app.getPath("userData");
-      if (userDataPath) {
-        dbPath = `${userDataPath}/quiz_app.db`;
-      } else {
-        dbPath = "quiz_app.db";
-      }
-    } else {
-      // Development/testing fallback
-      dbPath = "./quiz_app.db";
-    }
-
-    this.sqliteManager = SQLiteManager.getInstance(dbPath);
+    this.sqliteManager = SQLiteManager.getInstance(this.getDbPath());
     this.db = await this.sqliteManager.initialize();
   }
 
@@ -697,6 +685,14 @@ export class LocalDatabaseService {
     } catch (error) {
       console.error("Error updating user last login:", error);
     }
+  }
+
+  /**
+   * Get the database path
+   */
+  private getDbPath(): string {
+    const userDataPath = app.getPath("userData");
+    return `${userDataPath}/quiz_app.db`;
   }
 
   /**

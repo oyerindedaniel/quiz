@@ -21,18 +21,18 @@ class SyncEngine {
                 administrative: 3,
             },
             retryIntervals: {
-                critical: [1000, 2000, 4000, 8000, 16000], // immediate aggressive retry
-                important: [5000, 15000, 45000, 135000], // moderate retry
-                administrative: [60000, 300000, 900000], // conservative retry
+                critical: [1000, 2000, 4000, 8000, 16000],
+                important: [5000, 15000, 45000, 135000],
+                administrative: [60000, 300000, 900000],
             },
             batchSizes: {
-                critical: 10, // smaller batches for faster processing
+                critical: 10,
                 important: 25,
-                administrative: 50, // larger batches for efficiency
+                administrative: 50,
             },
             syncIntervals: {
-                periodic: 30000, // 30 seconds when active
-                background: 300000, // 5 minutes when in background
+                periodic: 30000,
+                background: 300000,
             },
         };
         this.localDb = local_database_service_js_1.LocalDatabaseService.getInstance();
@@ -53,9 +53,6 @@ class SyncEngine {
         }
         return SyncEngine.instance;
     }
-    /**
-     * Initialize the sync engine - call this during app startup
-     */
     async initialize(remoteDb) {
         if (this.isInitialized) {
             return;
@@ -70,7 +67,6 @@ class SyncEngine {
             this.setupEventListeners();
             await this.fixInvalidTimestamps();
             await this.updateConnectivityStatus();
-            // Start periodic sync if online
             if (this.currentSyncStatus.isOnline) {
                 this.startPeriodicSync();
             }
@@ -85,9 +81,6 @@ class SyncEngine {
             throw new err_js_1.SyncError("Failed to initialize sync engine", "initialization", (0, err_js_1.normalizeError)(error));
         }
     }
-    /**
-     * Main sync trigger - handles all sync operations
-     */
     async triggerSync(trigger, options = {}) {
         if (!this.isInitialized) {
             throw new err_js_1.SyncError("Sync engine not initialized", "trigger_sync");
@@ -152,9 +145,6 @@ class SyncEngine {
             this.currentSyncStatus.syncInProgress = false;
         }
     }
-    /**
-     * Add sync operation to queue
-     */
     async queueOperation(operation) {
         const tier = this.determineSyncTier(operation.type, operation.tableName);
         await this.syncQueue.addOperation({
@@ -163,15 +153,9 @@ class SyncEngine {
             timestamp: new Date().toISOString(),
         }, tier);
     }
-    /**
-     * Get current sync status
-     */
     getSyncStatus() {
         return { ...this.currentSyncStatus };
     }
-    /**
-     * Force WAL checkpoint - called during critical sync operations
-     */
     async forceWALCheckpoint() {
         try {
             await this.localDb.executeRawSQL("PRAGMA wal_checkpoint(TRUNCATE)");
@@ -181,16 +165,12 @@ class SyncEngine {
             console.error("SyncEngine: WAL checkpoint failed:", error);
         }
     }
-    /**
-     * Cleanup sync engine resources
-     */
     async cleanup() {
         console.log("SyncEngine: Starting cleanup...");
         if (this.syncIntervalId) {
             clearInterval(this.syncIntervalId);
             this.syncIntervalId = null;
         }
-        // Attempt final sync if online
         if (this.currentSyncStatus.isOnline && this.remoteDb) {
             try {
                 await this.triggerSync("app_close", { force: true });
@@ -217,10 +197,7 @@ class SyncEngine {
                 this.stopPeriodicSync();
             }
         });
-        // App lifecycle events (if in Electron)
         if ((0, lib_js_1.isElectron)()) {
-            // These would be set up in the main process and communicated via IPC
-            // For now, we'll handle them in the sync triggers
         }
     }
     async updateConnectivityStatus() {
@@ -240,7 +217,7 @@ class SyncEngine {
     }
     startPeriodicSync() {
         if (this.syncIntervalId) {
-            return; // Already running
+            return;
         }
         this.syncIntervalId = setInterval(async () => {
             try {
@@ -281,16 +258,13 @@ class SyncEngine {
             console.error("SyncEngine: Failed to update sync timestamps:", error);
         }
     }
-    // Sync Operation Implementations
     async performStartupSync() {
         console.log("SyncEngine: Performing startup sync");
         try {
             let pushedRecords = 0;
             let pulledRecords = 0;
-            // First, push any pending critical data (quiz submissions)
             const pushResult = await this.pushCriticalData();
             pushedRecords += pushResult.pushedRecords || 0;
-            // Then pull fresh data if local database is empty or outdated
             const pullResult = await this.pullFreshData();
             pulledRecords += pullResult.pulledRecords || 0;
             return {
@@ -361,10 +335,8 @@ class SyncEngine {
         try {
             let pushedRecords = 0;
             let pulledRecords = 0;
-            // Push all local changes
             const pushResult = await this.pushAllLocalChanges();
             pushedRecords += pushResult.pushedRecords || 0;
-            // Pull all remote updates
             const pullResult = await this.pullAllRemoteChanges();
             pulledRecords += pullResult.pulledRecords || 0;
             return {
@@ -380,22 +352,18 @@ class SyncEngine {
     }
     async performAppCloseSync() {
         console.log("SyncEngine: Performing app close sync");
-        // Force all critical data to sync before app closes
         await this.forceWALCheckpoint();
         return this.pushCriticalData();
     }
-    // Data Push/Pull Operations
     async pushCriticalData() {
         if (!this.remoteDb) {
             throw new err_js_1.SyncError("Remote database not available", "push_critical");
         }
         try {
-            // Get unsynced submitted quiz attempts
             const unsyncedAttempts = (await this.localDb.executeRawSQL(`SELECT * FROM quiz_attempts WHERE synced = 0 AND submitted = 1 ORDER BY submitted_at ASC`));
             let pushedRecords = 0;
             for (const rawAttempt of unsyncedAttempts) {
                 try {
-                    // Transform raw SQL result (snake_case) to proper QuizAttempt format (camelCase)
                     const attempt = {
                         id: rawAttempt.id,
                         userId: rawAttempt.user_id,
@@ -414,18 +382,10 @@ class SyncEngine {
                         elapsedTime: rawAttempt.elapsed_time,
                         lastActiveAt: rawAttempt.last_active_at,
                     };
-                    // await this.remoteDb.syncQuizAttempt(attempt);
-                    // await this.localDb.runRawSQL(
-                    //   "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ?, sync_error = NULL WHERE id = ?",
-                    //   [new Date().toISOString(), attempt.id]
-                    // );
+                    await this.remoteDb.syncQuizAttempt(attempt);
+                    await this.localDb.runRawSQL("UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ?, sync_error = NULL WHERE id = ?", [new Date().toISOString(), attempt.id]);
                     pushedRecords++;
-                    // await this.logSyncOperation(
-                    //   "push",
-                    //   "quiz_attempts",
-                    //   attempt.id,
-                    //   "success"
-                    // );
+                    await this.logSyncOperation("push", "quiz_attempts", attempt.id, "success");
                 }
                 catch (error) {
                     await this.logSyncOperation("push", "quiz_attempts", rawAttempt.id, "failed", (0, err_js_1.normalizeError)(error));
@@ -448,7 +408,6 @@ class SyncEngine {
             return { success: false, error: "Remote database not available" };
         }
         try {
-            // Get unsynced in-progress quiz attempts (important but not critical)
             const unsyncedAttempts = (await this.localDb.executeRawSQL(`SELECT * FROM quiz_attempts WHERE synced = 0 AND submitted = 0 AND answers IS NOT NULL`));
             let pushedRecords = 0;
             const batchSize = this.config.batchSizes.important;
@@ -476,19 +435,8 @@ class SyncEngine {
                             lastActiveAt: rawAttempt.last_active_at,
                         };
                         console.log("did transform");
-                        // await this.remoteDb.syncQuizAttempt(attempt);
-                        // await this.localDb.runRawSQL(
-                        //   "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ? WHERE id = ?",
-                        //   [new Date().toISOString(), attempt.id]
-                        // );
                         console.log("did sync");
                         pushedRecords++;
-                        // await this.logSyncOperation(
-                        //   "push",
-                        //   "quiz_attempts",
-                        //   attempt.id,
-                        //   "success"
-                        // );
                     }
                     catch (error) {
                         await this.logSyncOperation("push", "quiz_attempts", rawAttempt.id, "failed", (0, err_js_1.normalizeError)(error));
@@ -521,7 +469,6 @@ class SyncEngine {
         console.log("SyncEngine: Performing pullFreshData");
         try {
             let pulledRecords = 0;
-            // Check if local database is empty (first time setup)
             const userCount = await this.localDb.executeRawSQL("SELECT COUNT(*) as count FROM users");
             const subjectCount = await this.localDb.executeRawSQL("SELECT COUNT(*) as count FROM subjects");
             const hasUsers = userCount[0]?.count > 0;
@@ -534,15 +481,12 @@ class SyncEngine {
                     note: "Local database already populated",
                 };
             }
-            // **Network Connectivity Assessment** - Try remote first, fallback to local seeding
             if (this.currentSyncStatus.isOnline && this.remoteDb) {
                 try {
                     const remoteConnected = await this.remoteDb.checkConnection();
                     if (remoteConnected) {
                         console.log("SyncEngine: Online and remote connected, performing remote data pull");
-                        // Pull users, subjects, and questions from remote
                         const syncData = await this.remoteDb.pullLatestData();
-                        // Insert users
                         for (const user of syncData.users) {
                             try {
                                 const localUser = {
@@ -566,7 +510,6 @@ class SyncEngine {
                             }
                         }
                         console.log("SyncEngine: Pulled users", syncData.users);
-                        // Insert subjects
                         for (const subject of syncData.subjects) {
                             try {
                                 const localSubject = {
@@ -587,7 +530,6 @@ class SyncEngine {
                                 console.warn("Failed to create subject:", subject.subjectCode, error);
                             }
                         }
-                        // Insert questions
                         for (const question of syncData.questions) {
                             try {
                                 const localQuestion = {
@@ -672,8 +614,6 @@ class SyncEngine {
         }
     }
     async pullAllRemoteChanges() {
-        // For now, focus on pulling new questions and subject updates
-        // This would be enhanced with delta sync in the future
         return this.pullFreshData();
     }
     async logSyncOperation(operationType, tableName, recordId, status, error) {
@@ -695,9 +635,6 @@ class SyncEngine {
             console.error("SyncEngine: Failed to log sync operation:", (0, err_js_1.normalizeError)(logError).message);
         }
     }
-    /**
-     * Fix any existing quiz attempts with invalid timestamps
-     */
     async fixInvalidTimestamps() {
         try {
             console.log("SyncEngine: Checking for invalid timestamps in quiz attempts...");
@@ -714,7 +651,6 @@ class SyncEngine {
                 const now = new Date().toISOString();
                 for (const attempt of invalidAttempts) {
                     const record = attempt;
-                    // Use updated_at if valid
                     let fixedStartedAt = now;
                     if (record.updated_at &&
                         record.updated_at !== "undefined" &&
@@ -727,7 +663,6 @@ class SyncEngine {
                             }
                         }
                         catch {
-                            // Keep using current time
                         }
                     }
                     await this.localDb.runRawSQL(`

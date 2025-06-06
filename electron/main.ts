@@ -7,11 +7,41 @@ import {
   dialog,
 } from "electron";
 import { join } from "path";
-import Store from "electron-store";
+import { Low } from "lowdb";
+import { JSONFile } from "lowdb/node";
 import { existsSync } from "fs";
 
 import { config } from "dotenv";
-config();
+
+const loadEnvConfig = () => {
+  const possibleEnvPaths = [
+    join(process.cwd(), ".env"),
+    join(__dirname, ".env"),
+    join(__dirname, "../.env"),
+    join(__dirname, "../../.env"),
+    join(process.resourcesPath, ".env"),
+  ];
+
+  let envLoaded = false;
+
+  for (const envPath of possibleEnvPaths) {
+    if (existsSync(envPath)) {
+      console.log(`Loading environment from: ${envPath}`);
+      config({ path: envPath });
+      envLoaded = true;
+      break;
+    }
+  }
+
+  if (!envLoaded) {
+    console.warn("No .env file found in any expected location:");
+    possibleEnvPaths.forEach((path) => console.warn(`  - ${path}`));
+  }
+
+  console.log("Checking system environment variables...");
+};
+
+loadEnvConfig();
 
 import { MainDatabaseService } from "./services/database-service.js";
 import type {
@@ -21,7 +51,7 @@ import type {
   SyncOperationType,
   NewQuestion,
 } from "../src/types/app.js";
-import { SyncTrigger } from "../src/lib/sync/sync-engine.js";
+import type { SyncTrigger } from "../src/lib/sync/sync-engine.js";
 import { AutoSeedingService } from "../src/lib/seeding/auto-seeding-service.js";
 
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
@@ -42,31 +72,33 @@ if (!gotTheLock) {
   console.log("Single instance lock acquired successfully");
 }
 
-// interface AppStoreSchema {
-//   currentSession: SessionData | null;
-//   settings: {
-//     autoBackup: boolean;
-//   };
-//   [key: string]: unknown;
-// }
+interface AppData {
+  currentSession: SessionData | null;
+  settings: {
+    autoBackup: boolean;
+    [key: string]: any;
+  };
+  timeLimits: Record<string, number>;
+  [key: string]: any;
+}
 
 class QuizApp {
   private mainWindow: BrowserWindow | null = null;
   private dbService: MainDatabaseService;
-  private store: any;
-  // private store: Store<AppStoreSchema>;
+  private db: Low<AppData>;
   private isQuitting = false;
 
   constructor() {
     this.dbService = new MainDatabaseService();
-    this.store = new Store({
-      name: "quiz-app-session",
-      defaults: {
-        currentSession: null,
-        settings: {
-          autoBackup: true,
-        },
+
+    const file = join(app.getPath("userData"), "app-data.json");
+    const adapter = new JSONFile<AppData>(file);
+    this.db = new Low(adapter, {
+      currentSession: null,
+      settings: {
+        autoBackup: true,
       },
+      timeLimits: {},
     });
 
     // Handle second instance
@@ -105,6 +137,13 @@ class QuizApp {
 
     await app.whenReady();
 
+    try {
+      await this.db.read();
+      console.log("LowDB initialized successfully");
+    } catch (error) {
+      console.error("Failed to initialize LowDB:", error);
+    }
+
     this.registerAppProtocol();
 
     try {
@@ -123,28 +162,63 @@ class QuizApp {
     protocol.handle("app", (request) => {
       const url = new URL(request.url);
       const pathname = url.pathname;
-      const staticPath = join(__dirname, "../out");
+
+      // Try multiple possible static paths for production builds
+      const possiblePaths = [
+        join(__dirname, "../out"),
+        join(__dirname, "../../out"),
+        join(__dirname, "out"),
+        join(process.resourcesPath, "out"),
+        join(app.getAppPath(), "out"),
+      ];
+
+      let staticPath = "";
+
+      // Find the correct static path
+      for (const path of possiblePaths) {
+        if (existsSync(path)) {
+          staticPath = path;
+          break;
+        }
+      }
+
+      if (!staticPath) {
+        console.error(
+          "Static files directory not found. Checked paths:",
+          possiblePaths
+        );
+        return new Response("Static files not found", { status: 404 });
+      }
+
+      console.log(`Using static path: ${staticPath} for request: ${pathname}`);
 
       // Handle root path
       let filePath = pathname === "/" ? "index.html" : pathname.slice(1);
 
       // Security: prevent directory traversal
       if (filePath.includes("..")) {
+        console.error("Directory traversal attempt blocked:", filePath);
         return new Response("Not Found", { status: 404 });
       }
 
       const fullPath = join(staticPath, filePath);
+      console.log(`Attempting to serve file: ${fullPath}`);
 
       try {
         // Check if file exists
         if (!existsSync(fullPath)) {
+          console.log(
+            `File not found: ${fullPath}, attempting fallback to index.html`
+          );
           // For SPA routing, fallback to index.html
           const indexPath = join(staticPath, "index.html");
           if (existsSync(indexPath)) {
+            console.log(`Serving index.html fallback from: ${indexPath}`);
             return new Response(require("fs").readFileSync(indexPath), {
               headers: { "content-type": "text/html" },
             });
           } else {
+            console.error(`Index.html not found at: ${indexPath}`);
             return new Response("Not Found", { status: 404 });
           }
         }
@@ -179,13 +253,25 @@ class QuizApp {
           case "ico":
             contentType = "image/x-icon";
             break;
+          case "woff":
+          case "woff2":
+            contentType = "font/woff2";
+            break;
+          case "ttf":
+            contentType = "font/ttf";
+            break;
         }
 
+        console.log(
+          `Successfully serving file: ${fullPath} with content-type: ${contentType}`
+        );
         return new Response(require("fs").readFileSync(fullPath), {
           headers: { "content-type": contentType },
         });
       } catch (error) {
         console.error("Error serving file:", error);
+        console.error("Full path was:", fullPath);
+        console.error("Static path was:", staticPath);
         return new Response("Internal Server Error", { status: 500 });
       }
     });
@@ -259,6 +345,8 @@ class QuizApp {
       const prodUrl = "app://localhost/";
       console.log(`Loading production URL: ${prodUrl}`);
       this.mainWindow.loadURL(prodUrl);
+
+      // this.mainWindow.webContents.openDevTools();
     }
 
     // Show window when ready
@@ -1089,15 +1177,19 @@ class QuizApp {
             pin
           );
 
-          console.log("Authentication result:", result);
-
-          if (result.success && result.sessionToken) {
-            this.store.set("currentSession", {
+          if (
+            result.success &&
+            result.sessionToken &&
+            result.user &&
+            result.subject
+          ) {
+            this.db.data.currentSession = {
               user: result.user,
               subject: result.subject,
               sessionToken: result.sessionToken,
               authenticatedAt: new Date().toISOString(),
-            });
+            };
+            await this.db.write();
           }
 
           return result;
@@ -1122,7 +1214,8 @@ class QuizApp {
 
     ipcMain.handle("auth:logout", async () => {
       try {
-        this.store.delete("currentSession");
+        this.db.data.currentSession = null;
+        await this.db.write();
         console.log("User logged out successfully");
         return { success: true };
       } catch (error) {
@@ -1133,7 +1226,8 @@ class QuizApp {
 
     ipcMain.handle("auth:get-current-session", async () => {
       try {
-        const session = this.store.get("currentSession");
+        await this.db.read();
+        const session = this.db.data.currentSession;
         if (!session) {
           return { isAuthenticated: false };
         }
@@ -1143,7 +1237,8 @@ class QuizApp {
         );
 
         if (!validation.valid) {
-          this.store.delete("currentSession");
+          this.db.data.currentSession = null;
+          await this.db.write();
           return { isAuthenticated: false };
         }
 
@@ -1162,7 +1257,9 @@ class QuizApp {
       "auth:store-session",
       async (_, sessionData: SessionData) => {
         try {
-          this.store.set("currentSession", sessionData);
+          await this.db.read();
+          this.db.data.currentSession = sessionData;
+          await this.db.write();
           return { success: true };
         } catch (error) {
           console.error("Store session error:", error);
@@ -1176,8 +1273,10 @@ class QuizApp {
       "auth:set-time-limit",
       async (_, userId: string, subjectId: string, timeLimit: number) => {
         try {
+          await this.db.read();
           const key = `timeLimit:${userId}:${subjectId}`;
-          this.store.set(key, timeLimit);
+          this.db.data.timeLimits[key] = timeLimit;
+          await this.db.write();
           console.log("Time limit set:", { userId, subjectId, timeLimit });
           return { success: true };
         } catch (error) {
@@ -1191,8 +1290,9 @@ class QuizApp {
       "auth:get-time-limit",
       async (_, userId: string, subjectId: string) => {
         try {
+          await this.db.read();
           const key = `timeLimit:${userId}:${subjectId}`;
-          const timeLimit = this.store.get(key);
+          const timeLimit = this.db.data.timeLimits[key];
           return timeLimit || null;
         } catch (error) {
           console.error("Get time limit error:", error);
@@ -1205,8 +1305,10 @@ class QuizApp {
       "auth:clear-time-limit",
       async (_, userId: string, subjectId: string) => {
         try {
+          await this.db.read();
           const key = `timeLimit:${userId}:${subjectId}`;
-          this.store.delete(key);
+          delete this.db.data.timeLimits[key];
+          await this.db.write();
           console.log("Time limit cleared:", { userId, subjectId });
           return { success: true };
         } catch (error) {
@@ -1218,6 +1320,54 @@ class QuizApp {
   }
 
   private setupAppEvents(): void {
+    process.on("uncaughtException", (error) => {
+      console.error("Uncaught Exception:", error);
+
+      if (
+        error.message.includes("ECONNRESET") ||
+        error.message.includes("Connection terminated") ||
+        error.message.includes("ENOTFOUND") ||
+        error.message.includes("ETIMEDOUT")
+      ) {
+        console.log("Network error handled gracefully, continuing...");
+        return;
+      }
+
+      if (this.mainWindow) {
+        dialog.showErrorBox(
+          "Application Error",
+          `An unexpected error occurred: ${error.message}\n\nThe application will restart.`
+        );
+      }
+
+      app.relaunch();
+      app.exit(1);
+    });
+
+    process.on("unhandledRejection", (reason, promise) => {
+      console.error(
+        "Unhandled Promise Rejection at:",
+        promise,
+        "reason:",
+        reason
+      );
+
+      // Handle network-related promise rejections gracefully
+      const reasonStr = String(reason);
+      if (
+        reasonStr.includes("ECONNRESET") ||
+        reasonStr.includes("Connection terminated") ||
+        reasonStr.includes("ENOTFOUND") ||
+        reasonStr.includes("ETIMEDOUT")
+      ) {
+        console.log("Network promise rejection handled gracefully");
+        return;
+      }
+
+      // Log other rejections but don't crash the app
+      console.warn("Promise rejection handled, continuing operation...");
+    });
+
     // Handle window creation on macOS
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {

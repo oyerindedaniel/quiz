@@ -269,7 +269,7 @@ export function QuizContainer({
 
   // Get quiz progress and navigation info
   const progress = quizController.getProgress();
-  const navigationInfo = quizController.getNavigationInfo();
+  // const navigationInfo = quizController.getNavigationInfo();
   const selectedAnswer = quizController.getAnswerForQuestion(
     currentQuestion.id
   );
@@ -318,17 +318,17 @@ export function QuizContainer({
       </div>
 
       {/* Progress Bar */}
-      <ProgressBar
+      {/* <ProgressBar
         currentQuestion={progress.currentQuestion}
         totalQuestions={progress.totalQuestions}
         answeredQuestions={progress.answeredQuestions}
         percentage={progress.percentage}
         questionsAnswered={navigationInfo.questionsAnswered}
         onQuestionClick={handleQuestionNavigation}
-      />
+      /> */}
 
       {/* Question Display */}
-      <QuestionDisplay
+      {/* <QuestionDisplay
         question={currentQuestion}
         questionNumber={progress.currentQuestion}
         totalQuestions={progress.totalQuestions}
@@ -341,7 +341,7 @@ export function QuizContainer({
         isLastQuestion={navigationInfo.isLastQuestion}
         onSubmitQuiz={handleSubmitQuiz}
         isSubmitting={isSubmitting}
-      />
+      /> */}
 
       {/* Quiz Completion Notice */}
       {quizController.isQuizComplete() && !isSubmitted && (

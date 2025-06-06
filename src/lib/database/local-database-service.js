@@ -50,9 +50,6 @@ class LocalDatabaseService {
         }
         return LocalDatabaseService.instance;
     }
-    /**
-     * Initialize the database connection
-     */
     async initialize() {
         if (this.db) {
             return;
@@ -60,25 +57,18 @@ class LocalDatabaseService {
         this.sqliteManager = sqlite_js_1.SQLiteManager.getInstance(this.getDbPath());
         this.db = await this.sqliteManager.initialize();
     }
-    /**
-     * Get the database instance
-     */
     getDb() {
         if (!this.db) {
             throw new Error("Database not initialized. Call initialize() first.");
         }
         return this.db;
     }
-    /**
-     * Get the SQLite manager for raw SQL operations
-     */
     getSqliteManager() {
         if (!this.sqliteManager) {
             throw new Error("Database not initialized. Call initialize() first.");
         }
         return this.sqliteManager;
     }
-    // User operations
     async findUserByStudentCode(studentCode) {
         const db = this.getDb();
         const users = await db
@@ -106,7 +96,6 @@ class LocalDatabaseService {
             updatedAt: now,
         });
     }
-    // Subject operations
     async findSubjectByCode(subjectCode) {
         const db = this.getDb();
         const subjects = await db
@@ -134,7 +123,6 @@ class LocalDatabaseService {
             updatedAt: now,
         });
     }
-    // Quiz attempt operations
     async findIncompleteAttempt(userId, subjectId) {
         const db = this.getDb();
         const attempts = await db
@@ -211,7 +199,6 @@ class LocalDatabaseService {
         })
             .where((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.quizAttempts.id, attemptId));
     }
-    // Question operations
     async getQuestionsForSubject(subjectId) {
         const db = this.getDb();
         return db
@@ -229,9 +216,6 @@ class LocalDatabaseService {
             updatedAt: now,
         });
     }
-    /**
-     * Update subject question count
-     */
     async updateSubjectQuestionCount(subjectCode) {
         const db = this.getDb();
         const questionCount = await db
@@ -248,9 +232,6 @@ class LocalDatabaseService {
             .where((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.subjects.subjectCode, subjectCode));
         console.log(`Updated question count for subject ${subjectCode}: ${count} answerable questions`);
     }
-    /**
-     * Bulk create questions
-     */
     async bulkCreateQuestions(questions) {
         if (questions.length === 0) {
             return { success: true, created: 0 };
@@ -282,9 +263,6 @@ class LocalDatabaseService {
             };
         }
     }
-    /**
-     * Execute a function within a transaction
-     */
     async transaction(callback) {
         const db = this.getDb();
         return await db.transaction(callback);
@@ -308,10 +286,6 @@ class LocalDatabaseService {
         })
             .where((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.id, questionId));
     }
-    /**
-     * Delete all questions for a specific subject code
-     * Useful for complete subject re-sync
-     */
     async deleteQuestionsBySubjectCode(subjectCode) {
         const db = this.getDb();
         const result = await db
@@ -320,9 +294,6 @@ class LocalDatabaseService {
             .returning({ id: local_schema_js_1.localSchema.questions.id });
         return result.length;
     }
-    /**
-     * Get all questions for a subject by subject code
-     */
     async getQuestionsBySubjectCode(subjectCode) {
         const db = this.getDb();
         return db
@@ -331,9 +302,6 @@ class LocalDatabaseService {
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.subjectCode, subjectCode), (0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.isActive, true)))
             .orderBy(local_schema_js_1.localSchema.questions.questionOrder);
     }
-    /**
-     * Count questions for a subject by subject code
-     */
     async countQuestionsBySubjectCode(subjectCode) {
         const db = this.getDb();
         const result = await db
@@ -342,10 +310,6 @@ class LocalDatabaseService {
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.subjectCode, subjectCode), (0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.isActive, true)));
         return result[0]?.count || 0;
     }
-    /**
-     * Delete quiz attempts for a specific user and subject
-     * This allows users to retake tests after admin intervention
-     */
     async deleteQuizAttempts(studentCode, subjectCode) {
         try {
             const db = this.getDb();
@@ -395,7 +359,6 @@ class LocalDatabaseService {
         }
         return false;
     }
-    // Raw SQL operations (exposed for MainDatabaseService)
     async executeRawSQL(sql, params = []) {
         const sqliteManager = this.getSqliteManager();
         return sqliteManager.executeRawSQL(sql, params);
@@ -412,12 +375,6 @@ class LocalDatabaseService {
         const sqliteManager = this.getSqliteManager();
         return sqliteManager.checkIntegrity();
     }
-    /**
-     * User regulation methods for admin control
-     */
-    /**
-     * Toggle active state for all users
-     */
     async toggleAllUsersActive(isActive) {
         try {
             const db = this.getDb();
@@ -442,9 +399,6 @@ class LocalDatabaseService {
             };
         }
     }
-    /**
-     * Toggle active state for a specific user
-     */
     async toggleUserActive(studentCode, isActive) {
         try {
             const db = this.getDb();
@@ -470,9 +424,6 @@ class LocalDatabaseService {
             };
         }
     }
-    /**
-     * Change user PIN
-     */
     async changeUserPin(studentCode, newPin) {
         try {
             const db = this.getDb();
@@ -500,9 +451,6 @@ class LocalDatabaseService {
             };
         }
     }
-    /**
-     * Update user last login timestamp
-     */
     async updateUserLastLogin(studentCode) {
         try {
             const db = this.getDb();
@@ -519,16 +467,11 @@ class LocalDatabaseService {
             console.error("Error updating user last login:", error);
         }
     }
-    /**
-     * Get the database path
-     */
     getDbPath() {
         const userDataPath = electron_1.app.getPath("userData");
+        console.log("LocalDatabaseService: User data path:", userDataPath);
         return `${userDataPath}/quiz_app.db`;
     }
-    /**
-     * Cleanup database connections
-     */
     async cleanup() {
         console.log("LocalDatabaseService: Starting cleanup...");
         try {

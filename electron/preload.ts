@@ -145,13 +145,6 @@ const electronAPI = {
     changeUserPin: (studentCode: string, newPin: string) =>
       ipcRenderer.invoke("admin:change-user-pin", studentCode, newPin),
   },
-
-  // Remote operations (secure)
-  remote: {
-    bulkCreateQuestions: (
-      questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
-    ) => ipcRenderer.invoke("remote:bulk-create-questions", questions),
-  },
 };
 
 contextBridge.exposeInMainWorld("electronAPI", electronAPI);
