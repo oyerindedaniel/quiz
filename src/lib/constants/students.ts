@@ -3,7 +3,43 @@
  * Contains class lists and subject information for seeding
  */
 
-import type { StudentData, SubjectData, Class, Gender } from "../../types";
+import type { StudentData, SubjectData, Class } from "@/types/app";
+
+/**
+ * BASIC 5 Class Student List
+ */
+export const BASIC5_STUDENTS: Omit<StudentData, "studentCode">[] = [
+  { name: "AJIDE NIFEMI CHRISTIANA", gender: "FEMALE", class: "BASIC5" },
+  {
+    name: "OLATIMEHIN OLUWATISE CHRISTABEL",
+    gender: "FEMALE",
+    class: "BASIC5",
+  },
+  { name: "ADEOYE DANIEL ADESANMISI", gender: "MALE", class: "BASIC5" },
+  { name: "OGUNMODEDE JOHN OLUWATIMILEHIN", gender: "MALE", class: "BASIC5" },
+  { name: "AJIBOLA OLUWANIFEMI OPEMIPO", gender: "MALE", class: "BASIC5" },
+  { name: "ADEMOLA ADEKIITE ADEMOLA", gender: "MALE", class: "BASIC5" },
+  {
+    name: "OJUOLAPE-OLAJIDE SHINAYOMI SAMUEL",
+    gender: "MALE",
+    class: "BASIC5",
+  },
+  { name: "SAMUEL PEACE OLUWADAMILOLA", gender: "FEMALE", class: "BASIC5" },
+  { name: "OJO OLUWASEKEMI PRECIOUS", gender: "FEMALE", class: "BASIC5" },
+  { name: "OLAYINKA OLAMIDE PRECIOUS", gender: "MALE", class: "BASIC5" },
+  { name: "OYEWOLE BLISS OLUWAFIREWAMIRI", gender: "FEMALE", class: "BASIC5" },
+  { name: "AKINYEMI DANIELLA PRECIOUS", gender: "FEMALE", class: "BASIC5" },
+  { name: "OLAYINKA OLUMIDE PRAISE", gender: "MALE", class: "BASIC5" },
+  { name: "KOLAPO ELIZABETH IYANUOLUWA", gender: "FEMALE", class: "BASIC5" },
+  { name: "OKOLI MARY-JANE MESAOMACHUKWU", gender: "FEMALE", class: "BASIC5" },
+  { name: "OKOLI CHIMDINDU FRANCIS", gender: "MALE", class: "BASIC5" },
+  { name: "AYENI MOFEOLUWA ENOCH", gender: "MALE", class: "BASIC5" },
+  { name: "ILESANMI ROSETTE OLUWAPEMISIRE", gender: "FEMALE", class: "BASIC5" },
+  { name: "OLANIYI MICHAEL OLAMIDE", gender: "MALE", class: "BASIC5" },
+  { name: "OJIKUTU PRECIOUS AYOMIDE", gender: "FEMALE", class: "BASIC5" },
+  { name: "ADEKOLA DANIEL OLUWADARASIMI", gender: "MALE", class: "BASIC5" },
+  { name: "OYERINDE DANIEL", gender: "MALE", class: "BASIC5" },
+];
 
 /**
  * SS 2 Class Student List
@@ -13,6 +49,7 @@ export const SS2_STUDENTS: Omit<StudentData, "studentCode">[] = [
   { name: "AWOLUMATE DANIEL", gender: "MALE", class: "SS2" },
   { name: "JOHN RACHEAL TEMITOPE", gender: "FEMALE", class: "SS2" },
   { name: "ALABI SAMUEL OREOFEOLUWA", gender: "MALE", class: "SS2" },
+  { name: "OYERINDE DANIEL", gender: "MALE", class: "SS2" },
 ];
 
 /**
@@ -30,6 +67,7 @@ export const JSS3_STUDENTS: Omit<StudentData, "studentCode">[] = [
   },
   { name: "OLOJU DOYINSOLA ABIGAEL", gender: "FEMALE", class: "JSS3" },
   { name: "CHINEDU PRECIOUS CHIDIMMA", gender: "FEMALE", class: "JSS3" },
+  { name: "OYERINDE DANIEL", gender: "MALE", class: "JSS3" },
 ];
 
 /**
@@ -37,6 +75,14 @@ export const JSS3_STUDENTS: Omit<StudentData, "studentCode">[] = [
  */
 export function generateStudentCodes(): StudentData[] {
   const allStudents: StudentData[] = [];
+
+  // Generate BASIC5 student codes
+  BASIC5_STUDENTS.forEach((student, index) => {
+    allStudents.push({
+      ...student,
+      studentCode: `BASIC5_STU_${String(index + 1).padStart(3, "0")}`, // BASIC5_STU_001, BASIC5_STU_002, etc.
+    });
+  });
 
   // Generate SS2 student codes
   SS2_STUDENTS.forEach((student, index) => {
@@ -58,47 +104,146 @@ export function generateStudentCodes(): StudentData[] {
 }
 
 /**
- * Core subjects for both classes
+ * Centralized subject name
  */
-export const CORE_SUBJECTS = [
-  "ENGLISH STUDIES",
+export const SUBJECT_ABBREVIATIONS: Record<string, string> = {
+  MATHEMATICS: "MATH",
+  "ENGLISH LANGUAGE": "ENG",
+  "BASIC SCIENCE": "BSC",
+  "SOCIAL STUDIES": "SST",
+  YORUBA: "YOR",
+  "BASIC TECHNOLOGY": "TECH",
+  HISTORY: "HIST",
+  "AGRICULTURAL SCIENCE": "AGRIC",
+  "PHYSICAL AND HEALTH EDUCATION": "PHE",
+  "CULTURAL AND CREATIVE ART": "CCA",
+  "CHRISTIAN RELIGIOUS STUDIES": "CRS",
+  MUSIC: "MUSIC",
+  "BUSINESS STUDIES": "BUSINESS",
+  "CIVIC EDUCATION": "CIVIC",
+  "COMPUTER SCIENCE": "COMP",
+  "HOME ECONOMICS": "HOME",
+  FRENCH: "FRENCH",
+  BIOLOGY: "BIO",
+  CHEMISTRY: "CHEM",
+  PHYSICS: "PHY",
+  "ANIMAL HUSBANDRY": "ANI",
+  GEOGRAPHY: "GEO",
+  ECONOMICS: "ECON",
+  LITERATURE: "LIT",
+  "FURTHER MATHS": "FURTMATH",
+  GOVERNMENT: "GOV",
+};
+
+/**
+ * Core subjects for BASIC5 class
+ */
+export const BASIC5_SUBJECTS = [
   "MATHEMATICS",
-  "SOCIAL STUDIES",
+  "ENGLISH LANGUAGE",
   "BASIC SCIENCE",
-  "YORUBA LANGUAGE",
+  "SOCIAL STUDIES",
+  "YORUBA",
 ];
+
+/**
+ * Subjects for JSS3 class
+ */
+export const JSS3_SUBJECTS = [
+  "MATHEMATICS",
+  "ENGLISH LANGUAGE",
+  "BASIC SCIENCE",
+  "BASIC TECHNOLOGY",
+  "HISTORY",
+  "AGRICULTURAL SCIENCE",
+  "PHYSICAL AND HEALTH EDUCATION",
+  "CULTURAL AND CREATIVE ART",
+  "CHRISTIAN RELIGIOUS STUDIES",
+  "YORUBA",
+  "MUSIC",
+  "BUSINESS STUDIES",
+  "CIVIC EDUCATION",
+  "SOCIAL STUDIES",
+  "COMPUTER SCIENCE",
+  "HOME ECONOMICS",
+  "FRENCH",
+];
+
+/**
+ * Subjects for SS2 class
+ */
+export const SS2_SUBJECTS = [
+  "BIOLOGY",
+  "CHEMISTRY",
+  "PHYSICS",
+  "ANIMAL HUSBANDRY",
+  "AGRICULTURAL SCIENCE",
+  "COMPUTER SCIENCE",
+  "CIVIC EDUCATION",
+  "GEOGRAPHY",
+  "ECONOMICS",
+  "LITERATURE",
+  "FURTHER MATHS",
+  "MATHEMATICS",
+  "ENGLISH LANGUAGE",
+  "GOVERNMENT",
+  "YORUBA",
+  "CHRISTIAN RELIGIOUS STUDIES",
+];
+
+/**
+ * Get subjects for a specific class
+ */
+export function getSubjectsForClass(cls: Class): string[] {
+  switch (cls) {
+    case "BASIC5":
+      return BASIC5_SUBJECTS;
+    case "JSS3":
+      return JSS3_SUBJECTS;
+    case "SS2":
+      return SS2_SUBJECTS;
+    default:
+      return [];
+  }
+}
+
+/**
+ * Generate subject name from code using centralized mapping
+ */
+export function generateSubjectName(subjectCode: string): string {
+  const abbreviationToName: Record<string, string> = {};
+  Object.entries(SUBJECT_ABBREVIATIONS).forEach(([fullName, abbrev]) => {
+    abbreviationToName[abbrev] = fullName;
+  });
+
+  const parts = subjectCode.split("_");
+  if (parts.length >= 2) {
+    const subjectPart = parts[1];
+    return abbreviationToName[subjectPart] || subjectPart;
+  }
+
+  return abbreviationToName[subjectCode] || subjectCode;
+}
 
 /**
  * Generate subject codes with class prefix
  */
 export function generateSubjectCodes(): SubjectData[] {
   const subjects: SubjectData[] = [];
-  const classes: Class[] = ["SS2", "JSS3"];
+  const classes: Class[] = ["BASIC5", "JSS3", "SS2"];
 
   classes.forEach((cls) => {
-    CORE_SUBJECTS.forEach((subject) => {
-      let subjectCode = "";
+    const classSubjects = getSubjectsForClass(cls);
 
-      // Create abbreviations for subject codes
-      switch (subject) {
-        case "ENGLISH STUDIES":
-          subjectCode = `${cls}_ENG`;
-          break;
-        case "MATHEMATICS":
-          subjectCode = `${cls}_MATH`;
-          break;
-        case "SOCIAL STUDIES":
-          subjectCode = `${cls}_SST`;
-          break;
-        case "BASIC SCIENCE":
-          subjectCode = `${cls}_BSC`;
-          break;
-        case "YORUBA LANGUAGE":
-          subjectCode = `${cls}_YOR`;
-          break;
-        default:
-          subjectCode = `${cls}_${subject.substring(0, 3).toUpperCase()}`;
+    classSubjects.forEach((subject) => {
+      const subjectAbbreviation = SUBJECT_ABBREVIATIONS[subject];
+
+      if (!subjectAbbreviation) {
+        console.warn(`No abbreviation found for subject: ${subject}`);
+        return;
       }
+
+      const subjectCode = `${cls}_${subjectAbbreviation}`;
 
       subjects.push({
         name: subject,

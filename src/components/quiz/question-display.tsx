@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/lib";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { Question } from "../../types";
+import type { Question } from "../../types/app";
 
 interface QuestionDisplayProps {
   question: Question;

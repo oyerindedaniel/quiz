@@ -1,24 +1,33 @@
-import { AuthenticationService } from "./authentication-service";
-import { LocalDatabaseService } from "../database/local-database-service";
-import { generateUUID } from "../utils";
-import { ALL_STUDENTS, ALL_SUBJECTS } from "../constants/students";
+import { LocalDatabaseService } from "../database/local-database-service.js";
+import { generateUUID } from "../../utils/lib.js";
+import { ALL_STUDENTS } from "../constants/students.js";
+import bcrypt from "bcryptjs";
 import type {
   UserSeedData,
-  SubjectSeedData,
   SeedResult,
-  StudentData,
-  SubjectData,
   Class,
   Gender,
-} from "../../types";
+} from "../../types/app.js";
+import { RemoteDatabaseService } from "../database/remote-database-service.js";
+import { v4 as uuidv4 } from "uuid";
+
+interface DatabaseServiceOptions {
+  isRemote?: boolean;
+}
 
 export class UserSeedingService {
-  private authService: AuthenticationService;
   private localDb: LocalDatabaseService;
+  private remoteDb: RemoteDatabaseService;
+  private isRemote: boolean;
 
-  constructor() {
-    this.authService = AuthenticationService.getInstance();
+  constructor(options: DatabaseServiceOptions = {}) {
     this.localDb = LocalDatabaseService.getInstance();
+    this.remoteDb = RemoteDatabaseService.getInstance();
+    this.isRemote = options.isRemote || false;
+  }
+
+  private generateUUID(): string {
+    return uuidv4();
   }
 
   /**
@@ -30,23 +39,33 @@ export class UserSeedingService {
 
     for (const userData of users) {
       try {
-        const existing = await this.localDb.findUserByStudentCode(
-          userData.studentCode
-        );
+        const existing = this.isRemote
+          ? await this.remoteDb.findUserByStudentCode(userData.studentCode)
+          : await this.localDb.findUserByStudentCode(userData.studentCode);
         if (existing) {
           results.skipped++;
           continue;
         }
 
-        await this.authService.createUser({
-          id: generateUUID(),
-          name: userData.name,
-          studentCode: userData.studentCode,
-          passwordHash: "", // Will be set by authService
-          pin: userData.pin,
-          class: userData.class,
-          gender: userData.gender,
-        });
+        const passwordHash = await bcrypt.hash(userData.pin, 10);
+
+        await (this.isRemote
+          ? this.remoteDb.createUser({
+              id: this.generateUUID(),
+              name: userData.name,
+              studentCode: userData.studentCode,
+              passwordHash,
+              class: userData.class,
+              gender: userData.gender,
+            })
+          : this.localDb.createUser({
+              id: generateUUID(),
+              name: userData.name,
+              studentCode: userData.studentCode,
+              passwordHash,
+              class: userData.class,
+              gender: userData.gender,
+            }));
 
         results.created++;
       } catch (error) {
@@ -62,69 +81,103 @@ export class UserSeedingService {
   }
 
   /**
-   * Seed subjects from CSV data
+   * Create user data
    */
-  async seedSubjectsFromCSV(csvData: string): Promise<SeedResult> {
-    const subjects = this.parseSubjectCSV(csvData);
-    const results: SeedResult = { created: 0, skipped: 0, errors: [] };
+  async createUserData(): Promise<{
+    users: SeedResult;
+  }> {
+    const studentsWithPins: UserSeedData[] = ALL_STUDENTS.map(
+      (student, index) => {
+        const pin = String(100000 + (index + 1)).padStart(6, "1");
 
-    for (const subjectData of subjects) {
+        return {
+          name: student.name,
+          studentCode: student.studentCode,
+          pin: pin,
+          class: student.class,
+          gender: student.gender,
+        };
+      }
+    );
+
+    const userCSV = this.generateUserCSV(studentsWithPins);
+
+    const userResults = await this.seedUsersFromCSV(userCSV);
+
+    return {
+      users: userResults,
+    };
+  }
+
+  /**
+   * Get all student login credentials
+   */
+  getStudentCredentials(): UserSeedData[] {
+    return ALL_STUDENTS.map((student, index) => {
+      const pin = String(100000 + (index + 1)).padStart(6, "1");
+
+      return {
+        name: student.name,
+        studentCode: student.studentCode,
+        pin: pin,
+        class: student.class,
+        gender: student.gender,
+      };
+    });
+  }
+
+  /**
+   * Create subjects data
+   */
+  async createSubjectsData(): Promise<{
+    created: number;
+    existing: number;
+    errors: string[];
+  }> {
+    const { ALL_SUBJECTS } = await import("../constants/students");
+    const result: { created: number; existing: number; errors: string[] } = {
+      created: 0,
+      existing: 0,
+      errors: [],
+    };
+
+    for (const subjectData of ALL_SUBJECTS) {
       try {
-        const existing = await this.localDb.findSubjectByCode(
-          subjectData.subjectCode
-        );
+        const existing = this.isRemote
+          ? await this.remoteDb.findSubjectByCode(subjectData.subjectCode)
+          : await this.localDb.findSubjectByCode(subjectData.subjectCode);
         if (existing) {
-          results.skipped++;
+          result.existing++;
           continue;
         }
 
-        await this.localDb.createSubject({
-          id: generateUUID(),
-          name: subjectData.name,
-          subjectCode: subjectData.subjectCode,
-          description: subjectData.description,
-          class: subjectData.class,
-        });
+        await (this.isRemote
+          ? this.remoteDb.createSubject({
+              id: uuidv4(),
+              name: subjectData.name,
+              subjectCode: subjectData.subjectCode,
+              description: subjectData.description,
+              class: subjectData.class,
+            })
+          : this.localDb.createSubject({
+              id: uuidv4(),
+              name: subjectData.name,
+              subjectCode: subjectData.subjectCode,
+              description: subjectData.description,
+              class: subjectData.class,
+            }));
 
-        results.created++;
+        result.created++;
       } catch (error) {
-        results.errors.push(
-          `Failed to create subject ${subjectData.subjectCode}: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        result.errors.push(
+          `Failed to create subject ${subjectData.subjectCode}: ${errorMessage}`
         );
       }
     }
 
-    return results;
-  }
-
-  /**
-   * Create production data from constants
-   */
-  async createProductionData(): Promise<{
-    users: SeedResult;
-    subjects: SeedResult;
-  }> {
-    // Generate PIN codes for students (6-digit random numbers)
-    const studentsWithPins: UserSeedData[] = ALL_STUDENTS.map((student) => ({
-      name: student.name,
-      studentCode: student.studentCode,
-      pin: Math.floor(100000 + Math.random() * 900000).toString(),
-      class: student.class,
-      gender: student.gender,
-    }));
-
-    const userCSV = this.generateUserCSV(studentsWithPins);
-    const subjectCSV = this.generateSubjectCSV(ALL_SUBJECTS);
-
-    const userResults = await this.seedUsersFromCSV(userCSV);
-    const subjectResults = await this.seedSubjectsFromCSV(subjectCSV);
-
-    return {
-      users: userResults,
-      subjects: subjectResults,
-    };
+    return result;
   }
 
   /**
@@ -155,54 +208,12 @@ export class UserSeedingService {
   }
 
   /**
-   * Parse subject CSV data
-   */
-  private parseSubjectCSV(csvData: string): SubjectSeedData[] {
-    const lines = csvData.split("\n").filter((line) => line.trim());
-    if (lines.length === 0) return [];
-
-    const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-
-    return lines
-      .slice(1)
-      .map((line) => {
-        const values = line.split(",").map((v) => v.trim());
-        return {
-          name: values[headers.indexOf("name")] || "",
-          subjectCode: values[headers.indexOf("subject_code")] || "",
-          description: values[headers.indexOf("description")] || undefined,
-          class: (values[headers.indexOf("class")] as Class) || "SS2",
-        };
-      })
-      .filter(
-        (subject) => subject.name && subject.subjectCode && subject.class
-      );
-  }
-
-  /**
    * Generate user CSV from data
    */
   private generateUserCSV(users: UserSeedData[]): string {
     const headers = ["name", "student_code", "pin", "class", "gender"];
     const rows = users.map((user) =>
       [user.name, user.studentCode, user.pin, user.class, user.gender].join(",")
-    );
-
-    return [headers.join(","), ...rows].join("\n");
-  }
-
-  /**
-   * Generate subject CSV from data
-   */
-  private generateSubjectCSV(subjects: SubjectData[]): string {
-    const headers = ["name", "subject_code", "description", "class"];
-    const rows = subjects.map((subject) =>
-      [
-        subject.name,
-        subject.subjectCode,
-        subject.description || "",
-        subject.class,
-      ].join(",")
     );
 
     return [headers.join(","), ...rows].join("\n");

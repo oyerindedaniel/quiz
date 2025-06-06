@@ -3,25 +3,31 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { QuizController } from "../../lib/quiz/quiz-controller";
+import { QuizController } from "@/lib/quiz/quiz-controller";
 import { QuestionDisplay } from "./question-display";
 import { ProgressBar } from "./progress-bar";
 import { QuizResults } from "./quiz-results";
-import type { QuizSession, SubmissionResult, Question } from "../../types";
+import type {
+  QuizSession,
+  SubmissionResult,
+  Question,
+  User,
+  Subject,
+} from "@/types/app";
 
 interface QuizContainerProps {
   userId: string;
   subjectId: string;
-  subjectName?: string;
-  studentName?: string;
+  student?: User;
+  subject?: Subject;
   onExit: () => void;
 }
 
 export function QuizContainer({
   userId,
   subjectId,
-  subjectName,
-  studentName,
+  student,
+  subject,
   onExit,
 }: QuizContainerProps) {
   const [quizController] = useState(() => new QuizController());
@@ -69,7 +75,6 @@ export function QuizContainer({
         return;
       }
 
-      // Update session state
       const updatedSession = quizController.getCurrentSession();
       if (updatedSession) {
         setQuizSession({ ...updatedSession });
@@ -104,7 +109,6 @@ export function QuizContainer({
       const question = quizController.getCurrentQuestion();
       setCurrentQuestion(question);
 
-      // Update session state
       const updatedSession = quizController.getCurrentSession();
       if (updatedSession) {
         setQuizSession({ ...updatedSession });
@@ -120,7 +124,6 @@ export function QuizContainer({
       const question = quizController.getCurrentQuestion();
       setCurrentQuestion(question);
 
-      // Update session state
       const updatedSession = quizController.getCurrentSession();
       if (updatedSession) {
         setQuizSession({ ...updatedSession });
@@ -168,7 +171,7 @@ export function QuizContainer({
             Loading Quiz...
           </div>
           <div className="text-sm text-gray-600 mt-2">
-            {subjectName && `Subject: ${subjectName}`}
+            {subject?.name && `Subject: ${subject.name}`}
           </div>
         </div>
       </div>
@@ -226,8 +229,8 @@ export function QuizContainer({
           result={submissionResult}
           onExit={onExit}
           onRetakeQuiz={handleRetakeQuiz}
-          subjectName={subjectName}
-          studentName={studentName}
+          student={student}
+          subject={subject}
         />
       </div>
     );
@@ -266,7 +269,7 @@ export function QuizContainer({
 
   // Get quiz progress and navigation info
   const progress = quizController.getProgress();
-  const navigationInfo = quizController.getNavigationInfo();
+  // const navigationInfo = quizController.getNavigationInfo();
   const selectedAnswer = quizController.getAnswerForQuestion(
     currentQuestion.id
   );
@@ -280,11 +283,11 @@ export function QuizContainer({
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-xl font-semibold text-white">
-                  {subjectName || "Quiz"}
+                  {subject?.name || "Quiz"}
                 </h1>
-                {studentName && (
+                {student && (
                   <p className="text-brand-100 text-sm">
-                    Student: {studentName}
+                    Student: {student.name}
                   </p>
                 )}
               </div>
@@ -315,17 +318,17 @@ export function QuizContainer({
       </div>
 
       {/* Progress Bar */}
-      <ProgressBar
+      {/* <ProgressBar
         currentQuestion={progress.currentQuestion}
         totalQuestions={progress.totalQuestions}
         answeredQuestions={progress.answeredQuestions}
         percentage={progress.percentage}
         questionsAnswered={navigationInfo.questionsAnswered}
         onQuestionClick={handleQuestionNavigation}
-      />
+      /> */}
 
       {/* Question Display */}
-      <QuestionDisplay
+      {/* <QuestionDisplay
         question={currentQuestion}
         questionNumber={progress.currentQuestion}
         totalQuestions={progress.totalQuestions}
@@ -338,7 +341,7 @@ export function QuizContainer({
         isLastQuestion={navigationInfo.isLastQuestion}
         onSubmitQuiz={handleSubmitQuiz}
         isSubmitting={isSubmitting}
-      />
+      /> */}
 
       {/* Quiz Completion Notice */}
       {quizController.isQuizComplete() && !isSubmitted && (

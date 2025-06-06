@@ -39,3 +39,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Ignore build output
+/release/
+/dist/
+/out/
+*.asar
+*.bin
+*.dll
+
+# Database files
+quiz_app.db
+*.db
+*.sqlite
+*.sqlite3

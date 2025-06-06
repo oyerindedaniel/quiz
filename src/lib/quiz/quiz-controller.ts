@@ -1,20 +1,47 @@
 import { IPCDatabaseService } from "../services/ipc-database-service";
-import { generateUUID } from "../utils";
+import { generateUUID } from "@/utils/lib";
 import type {
   Question,
   QuizAttempt,
   QuizSession,
   AnswerResult,
   SubmissionResult,
-} from "@/types";
+} from "@/types/app";
 import type { NewQuizAttempt } from "../database/local-schema";
+import { QuestionProcessor } from "./question-processor";
 
 export class QuizController {
   private ipcDb: IPCDatabaseService;
   private currentSession: QuizSession | null = null;
+  private sessionStartTime: number = Date.now();
 
   constructor() {
     this.ipcDb = new IPCDatabaseService();
+  }
+
+  /**
+   * Check if there's an existing incomplete attempt with progress
+   */
+  async hasIncompleteAttemptWithProgress(
+    userId: string,
+    subjectId: string
+  ): Promise<boolean> {
+    try {
+      const existingAttempt = await this.ipcDb.findIncompleteAttempt(
+        userId,
+        subjectId
+      );
+
+      if (!existingAttempt || !existingAttempt.answers) {
+        return false;
+      }
+
+      const answers = JSON.parse(existingAttempt.answers);
+      return Object.keys(answers).length > 0;
+    } catch (error) {
+      console.error("Failed to check for incomplete attempt:", error);
+      return false;
+    }
   }
 
   /**
@@ -22,10 +49,6 @@ export class QuizController {
    */
   async startQuiz(userId: string, subjectId: string): Promise<QuizSession> {
     try {
-      if (!this.ipcDb.isElectronEnvironment()) {
-        throw new Error("This application requires Electron environment");
-      }
-
       const existingAttempt = await this.ipcDb.findIncompleteAttempt(
         userId,
         subjectId
@@ -60,13 +83,18 @@ export class QuizController {
       questions.length - 1
     );
 
+    this.sessionStartTime = Date.now();
+
     this.currentSession = {
       attemptId: attempt.id,
       questions,
       currentQuestionIndex,
       answers,
       isResume: true,
+      elapsedTime: attempt.elapsedTime || 0, // Previous elapsed time
     };
+
+    await this.updateElapsedTime();
 
     return this.currentSession;
   }
@@ -89,9 +117,12 @@ export class QuizController {
       userId,
       subjectId,
       totalQuestions: questions.length,
+      elapsedTime: 0,
     };
 
     const attemptId = await this.ipcDb.createQuizAttempt(attemptData);
+
+    this.sessionStartTime = Date.now();
 
     this.currentSession = {
       attemptId,
@@ -99,9 +130,48 @@ export class QuizController {
       currentQuestionIndex: 0,
       answers: {},
       isResume: false,
+      elapsedTime: 0,
     };
 
     return this.currentSession;
+  }
+
+  /**
+   * Update elapsed time in database
+   */
+  async updateElapsedTime(): Promise<void> {
+    if (!this.currentSession) return;
+
+    try {
+      const currentElapsed = Math.floor(
+        (Date.now() - this.sessionStartTime) / 1000
+      );
+      const totalElapsed =
+        (this.currentSession.elapsedTime || 0) + currentElapsed;
+
+      await this.ipcDb.updateElapsedTime(
+        this.currentSession.attemptId,
+        totalElapsed
+      );
+
+      // Reset session start time after updating
+      this.sessionStartTime = Date.now();
+      this.currentSession.elapsedTime = totalElapsed;
+    } catch (error) {
+      console.error("Failed to update elapsed time:", error);
+    }
+  }
+
+  /**
+   * Get total elapsed time including previous sessions
+   */
+  getElapsedTime(): number {
+    if (!this.currentSession) return 0;
+
+    const currentSessionElapsed = Math.floor(
+      (Date.now() - this.sessionStartTime) / 1000
+    );
+    return (this.currentSession.elapsedTime || 0) + currentSessionElapsed;
   }
 
   /**
@@ -180,31 +250,71 @@ export class QuizController {
   }
 
   /**
-   * Save answer for current question
+   * Update current question index to sync with external navigation
    */
-  async saveAnswer(selectedOption: string): Promise<AnswerResult> {
+  updateCurrentQuestionIndex(questionIndex: number): void {
+    if (!this.currentSession) return;
+
+    const { questions } = this.currentSession;
+    if (questionIndex >= 0 && questionIndex < questions.length) {
+      this.currentSession.currentQuestionIndex = questionIndex;
+    }
+  }
+
+  /**
+   * Sync current question index based on current question ID
+   */
+  syncCurrentQuestionIndex(currentQuestionId: string): void {
+    if (!this.currentSession) return;
+
+    const questionIndex = this.currentSession.questions.findIndex(
+      (q) => q.id === currentQuestionId
+    );
+
+    if (questionIndex !== -1) {
+      this.currentSession.currentQuestionIndex = questionIndex;
+    }
+  }
+
+  /**
+   * Get current question index in the raw questions array
+   */
+  getCurrentQuestionIndex(): number {
+    return this.currentSession?.currentQuestionIndex || 0;
+  }
+
+  /**
+   * Save answer for specific question by ID
+   */
+  async saveAnswerForQuestion(
+    questionId: string,
+    selectedOption: string
+  ): Promise<AnswerResult> {
     if (!this.currentSession) {
       return { success: false, error: "No active quiz session" };
     }
 
-    const currentQuestion = this.getCurrentQuestion();
-    if (!currentQuestion) {
-      return { success: false, error: "No current question" };
+    const question = this.currentSession.questions.find(
+      (q) => q.id === questionId
+    );
+    if (!question) {
+      return { success: false, error: "Question not found" };
     }
 
-    if (!["A", "B", "C", "D"].includes(selectedOption.toUpperCase())) {
+    if (!["A", "B", "C", "D", "E"].includes(selectedOption.toUpperCase())) {
       return { success: false, error: "Invalid answer option" };
     }
 
     try {
       await this.ipcDb.updateQuizAnswer(
         this.currentSession.attemptId,
-        currentQuestion.id,
+        questionId,
         selectedOption.toUpperCase()
       );
 
-      this.currentSession.answers[currentQuestion.id] =
-        selectedOption.toUpperCase();
+      this.currentSession.answers[questionId] = selectedOption.toUpperCase();
+
+      await this.updateElapsedTime();
 
       return {
         success: true,
@@ -218,6 +328,22 @@ export class QuizController {
         error: "Failed to save answer. Please try again.",
       };
     }
+  }
+
+  /**
+   * Save answer for current question
+   */
+  async saveAnswer(selectedOption: string): Promise<AnswerResult> {
+    if (!this.currentSession) {
+      return { success: false, error: "No active quiz session" };
+    }
+
+    const currentQuestion = this.getCurrentQuestion();
+    if (!currentQuestion) {
+      return { success: false, error: "No current question" };
+    }
+
+    return this.saveAnswerForQuestion(currentQuestion.id, selectedOption);
   }
 
   /**
@@ -238,6 +364,8 @@ export class QuizController {
 
       const scoreResult = this.calculateScore();
       const sessionDuration = this.calculateSessionDuration(attempt.startedAt);
+
+      await this.updateElapsedTime();
 
       await this.ipcDb.submitQuiz(
         this.currentSession.attemptId,
@@ -346,7 +474,9 @@ export class QuizController {
 
     return {
       totalScore: correctAnswers,
-      totalQuestions: questions.length,
+      // TODO: this is a hack to get the total questions
+      totalQuestions:
+        QuestionProcessor.processQuestions(questions).actualQuestions.length,
       correctAnswers,
     };
   }
@@ -374,39 +504,5 @@ export class QuizController {
   isQuestionAnswered(questionId: string): boolean {
     if (!this.currentSession) return false;
     return questionId in this.currentSession.answers;
-  }
-
-  /**
-   * Get question navigation info
-   */
-  getNavigationInfo(): {
-    canGoNext: boolean;
-    canGoPrevious: boolean;
-    isFirstQuestion: boolean;
-    isLastQuestion: boolean;
-    questionsAnswered: number[];
-  } {
-    if (!this.currentSession) {
-      return {
-        canGoNext: false,
-        canGoPrevious: false,
-        isFirstQuestion: true,
-        isLastQuestion: true,
-        questionsAnswered: [],
-      };
-    }
-
-    const { questions, currentQuestionIndex, answers } = this.currentSession;
-    const questionsAnswered = questions
-      .map((q, index) => (answers[q.id] ? index : -1))
-      .filter((index) => index >= 0);
-
-    return {
-      canGoNext: currentQuestionIndex < questions.length - 1,
-      canGoPrevious: currentQuestionIndex > 0,
-      isFirstQuestion: currentQuestionIndex === 0,
-      isLastQuestion: currentQuestionIndex === questions.length - 1,
-      questionsAnswered,
-    };
   }
 }

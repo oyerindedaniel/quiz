@@ -6,12 +6,13 @@ export const usersTable = sqliteTable("users", {
   name: text("name").notNull(),
   studentCode: text("student_code").unique().notNull(),
   passwordHash: text("password_hash").notNull(),
-  class: text("class", { enum: ["SS2", "JSS3"] }).notNull(),
+  class: text("class", { enum: ["SS2", "JSS3", "BASIC5"] }).notNull(),
   gender: text("gender", { enum: ["MALE", "FEMALE"] }).notNull(),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
   lastSynced: text("last_synced"),
   isActive: integer("is_active", { mode: "boolean" }).default(true),
+  lastLogin: text("last_login"),
 });
 
 export const subjectsTable = sqliteTable("subjects", {
@@ -19,7 +20,7 @@ export const subjectsTable = sqliteTable("subjects", {
   name: text("name").notNull(),
   subjectCode: text("subject_code").unique().notNull(),
   description: text("description"),
-  class: text("class", { enum: ["SS2", "JSS3"] }).notNull(),
+  class: text("class", { enum: ["SS2", "JSS3", "BASIC5"] }).notNull(),
   totalQuestions: integer("total_questions").default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -31,12 +32,14 @@ export const questionsTable = sqliteTable("questions", {
   subjectId: text("subject_id")
     .notNull()
     .references(() => subjectsTable.id, { onDelete: "cascade" }),
+  subjectCode: text("subject_code").notNull(), // For sync identification
   text: text("text").notNull(),
   options: text("options").notNull(), // JSON string
   answer: text("answer").notNull(),
-  questionOrder: integer("question_order"),
+  questionOrder: integer("question_order").notNull(),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+  explanation: text("explanation"),
   isActive: integer("is_active", { mode: "boolean" }).default(true),
 });
 
@@ -59,6 +62,8 @@ export const quizAttemptsTable = sqliteTable("quiz_attempts", {
   syncAttemptedAt: text("sync_attempted_at"),
   syncError: text("sync_error"),
   sessionDuration: integer("session_duration"),
+  elapsedTime: integer("elapsed_time").default(0), // Accumulated time spent in seconds
+  lastActiveAt: text("last_active_at"), // When quiz was last active (for resume tracking)
 });
 
 export const syncLogTable = sqliteTable("sync_log", {
@@ -72,16 +77,22 @@ export const syncLogTable = sqliteTable("sync_log", {
   completedAt: text("completed_at"),
 });
 
-// Schema object for Drizzle configuration
+export const syncTimestampsTable = sqliteTable("sync_timestamps", {
+  tableName: text("table_name").primaryKey(),
+  lastPullSync: text("last_pull_sync"),
+  lastPushSync: text("last_push_sync"),
+  lastFullSync: text("last_full_sync"),
+});
+
 export const localSchema = {
   users: usersTable,
   subjects: subjectsTable,
   questions: questionsTable,
   quizAttempts: quizAttemptsTable,
   syncLog: syncLogTable,
+  syncTimestamps: syncTimestampsTable,
 };
 
-// Export types
 export type User = typeof usersTable.$inferSelect;
 export type NewUser = typeof usersTable.$inferInsert;
 export type Subject = typeof subjectsTable.$inferSelect;
@@ -92,3 +103,5 @@ export type QuizAttempt = typeof quizAttemptsTable.$inferSelect;
 export type NewQuizAttempt = typeof quizAttemptsTable.$inferInsert;
 export type SyncLog = typeof syncLogTable.$inferSelect;
 export type NewSyncLog = typeof syncLogTable.$inferInsert;
+export type SyncTimestamps = typeof syncTimestampsTable.$inferSelect;
+export type NewSyncTimestamps = typeof syncTimestampsTable.$inferInsert;

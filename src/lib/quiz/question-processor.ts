@@ -1,5 +1,6 @@
 import type { Question } from "../database/local-schema";
-import type { QuestionItem, ProcessedQuizData } from "@/types";
+import type { QuestionItem, ProcessedQuizData } from "@/types/app";
+import { ImagePosition } from "@/types/app";
 
 export class QuestionProcessor {
   /**
@@ -25,15 +26,32 @@ export class QuestionProcessor {
         if (
           nextQuestion &&
           !nextQuestion.text.startsWith("[PASSAGE]") &&
-          !nextQuestion.text.startsWith("[HEADER]")
+          !nextQuestion.text.startsWith("[HEADER]") &&
+          !nextQuestion.text.startsWith("[IMAGE]")
         ) {
           const pairedQuestionItem = this.createRegularQuestion(nextQuestion);
           questionItems.push(pairedQuestionItem);
           actualQuestions.push(pairedQuestionItem);
-          i++; // Skip the next question since we processed it here
+          i++;
+        }
+      } else if (questionText.startsWith("[IMAGE]")) {
+        const imageItem = this.createImageItem(question);
+        questionItems.push(imageItem);
+
+        // Check if next question should be paired with this image
+        const nextQuestion = rawQuestions[i + 1];
+        if (
+          nextQuestion &&
+          !nextQuestion.text.startsWith("[PASSAGE]") &&
+          !nextQuestion.text.startsWith("[HEADER]") &&
+          !nextQuestion.text.startsWith("[IMAGE]")
+        ) {
+          const pairedQuestionItem = this.createRegularQuestion(nextQuestion);
+          questionItems.push(pairedQuestionItem);
+          actualQuestions.push(pairedQuestionItem);
+          i++;
         }
       } else {
-        // Regular question
         const questionItem = this.createRegularQuestion(question);
         questionItems.push(questionItem);
         actualQuestions.push(questionItem);
@@ -71,6 +89,48 @@ export class QuestionProcessor {
       type: "header",
       content,
     };
+  }
+
+  /**
+   * Create an image item
+   */
+  private static createImageItem(question: Question): QuestionItem {
+    const content = question.text.replace(/^\[IMAGE\]\s*/, "").trim();
+    const { imageUrl, position } = this.parseImageContent(content);
+
+    return {
+      question,
+      type: "image",
+      content,
+      imageUrl,
+      imagePosition: position,
+    };
+  }
+
+  /**
+   * Parse image content to extract URL and position
+   */
+  private static parseImageContent(content: string): {
+    imageUrl: string;
+    position: ImagePosition;
+  } {
+    const lines = content.split("\n").map((line) => line.trim());
+
+    let position: ImagePosition = "up";
+    let imageUrl = "";
+
+    for (const line of lines) {
+      if (line.startsWith("position:")) {
+        const pos = line.replace("position:", "").trim().toLowerCase();
+        if (pos === "up" || pos === "down") {
+          position = pos as ImagePosition;
+        }
+      } else if (line.startsWith("http://") || line.startsWith("https://")) {
+        imageUrl = line;
+      }
+    }
+
+    return { imageUrl, position };
   }
 
   /**
@@ -138,13 +198,14 @@ export class QuestionProcessor {
       if (questionItems[i].type === "question") {
         return i;
       }
-      // Skip to next question if current is header (header + question are paired)
+      // Skip to next question if current is header or image (header/image + question are paired)
       if (
-        questionItems[i].type === "header" &&
+        (questionItems[i].type === "header" ||
+          questionItems[i].type === "image") &&
         i + 1 < questionItems.length &&
         questionItems[i + 1].type === "question"
       ) {
-        return i; // Return header index, component will handle pairing
+        return i; // Return header/image index, component will handle pairing
       }
     }
     return null;
@@ -159,9 +220,13 @@ export class QuestionProcessor {
   ): number | null {
     for (let i = currentIndex - 1; i >= 0; i--) {
       if (questionItems[i].type === "question") {
-        // Check if this question is paired with a previous header
-        if (i > 0 && questionItems[i - 1].type === "header") {
-          return i - 1; // Return header index for paired display
+        // Check if this question is paired with a previous header or image
+        if (
+          i > 0 &&
+          (questionItems[i - 1].type === "header" ||
+            questionItems[i - 1].type === "image")
+        ) {
+          return i - 1; // Return header/image index for paired display
         }
         return i;
       }
@@ -217,9 +282,9 @@ export class QuestionProcessor {
       );
     }
 
-    // For header, find the paired question
+    // For header or image, find the paired question
     if (
-      currentItem.type === "header" &&
+      (currentItem.type === "header" || currentItem.type === "image") &&
       currentIndex + 1 < questionItems.length &&
       questionItems[currentIndex + 1].type === "question"
     ) {
@@ -254,15 +319,30 @@ export class QuestionProcessor {
         }
       }
 
+      // Check for orphaned images (image not followed by question)
+      if (item.type === "image") {
+        const nextItem = questionItems[i + 1];
+        if (!nextItem || nextItem.type !== "question") {
+          issues.push(`Image at index ${i} is not followed by a question`);
+        }
+
+        if (!item.imageUrl) {
+          issues.push(`Image at index ${i} is missing image URL`);
+        }
+      }
+
       // Check for questions with empty options (except paired ones)
       if (
         item.type === "question" &&
         (!item.options || item.options.length === 0)
       ) {
         const prevItem = questionItems[i - 1];
-        if (!prevItem || prevItem.type !== "header") {
+        if (
+          !prevItem ||
+          (prevItem.type !== "header" && prevItem.type !== "image")
+        ) {
           issues.push(
-            `Question at index ${i} has no options and is not paired with a header`
+            `Question at index ${i} has no options and is not paired with a header or image`
           );
         }
       }
@@ -272,5 +352,59 @@ export class QuestionProcessor {
       isValid: issues.length === 0,
       issues,
     };
+  }
+
+  /**
+   * Find the first answerable question index
+   */
+  static findFirstAnswerableIndex(questionItems: QuestionItem[]): number {
+    for (let i = 0; i < questionItems.length; i++) {
+      if (questionItems[i].type === "question") {
+        return i;
+      }
+      // For header or image, check if it's paired with a question
+      if (
+        (questionItems[i].type === "header" ||
+          questionItems[i].type === "image") &&
+        i + 1 < questionItems.length &&
+        questionItems[i + 1].type === "question"
+      ) {
+        return i; // Return header/image index for paired display
+      }
+    }
+    return 0; // Fallback to first item
+  }
+
+  /**
+   * Get the answerable question from the current index
+   * Handles both standalone questions and header/image-paired questions
+   */
+  static getAnswerableQuestion(
+    questionItems: QuestionItem[],
+    currentIndex: number
+  ): QuestionItem | null {
+    if (currentIndex < 0 || currentIndex >= questionItems.length) {
+      return null;
+    }
+
+    const currentItem = questionItems[currentIndex];
+
+    if (currentItem.type === "question") {
+      return currentItem;
+    }
+
+    if (currentItem.type === "header" || currentItem.type === "image") {
+      // Check if next item is a question (paired structure)
+      const nextIndex = currentIndex + 1;
+      if (
+        nextIndex < questionItems.length &&
+        questionItems[nextIndex].type === "question"
+      ) {
+        return questionItems[nextIndex];
+      }
+    }
+
+    // Passages and other non-answerable items
+    return null;
   }
 }

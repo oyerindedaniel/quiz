@@ -1,168 +1,52 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import path from "path";
-import os from "os";
-export class SQLiteManager {
-    constructor() {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SQLiteManager = void 0;
+const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
+const better_sqlite3_2 = require("drizzle-orm/better-sqlite3");
+const local_schema_js_1 = require("./local-schema.js");
+class SQLiteManager {
+    constructor(dbPath) {
         this.db = null;
         this.sqlite = null;
+        this.dbPath = dbPath;
     }
     /**
      * Get singleton instance
      */
-    static getInstance() {
+    static getInstance(dbPath) {
         if (!SQLiteManager.instance) {
-            SQLiteManager.instance = new SQLiteManager();
+            if (!dbPath) {
+                throw new Error("Database path required for first initialization");
+            }
+            SQLiteManager.instance = new SQLiteManager(dbPath);
         }
         return SQLiteManager.instance;
     }
     /**
-     * Get database path based on environment
-     */
-    async getDatabasePath() {
-        if (typeof window !== "undefined") {
-            throw new Error("Database should only be accessed from main process");
-        }
-        const isDev = process.env.NODE_ENV === "development";
-        let userDataPath;
-        try {
-            const { app } = await import("electron");
-            userDataPath = app.getPath("userData");
-        }
-        catch {
-            userDataPath = path.join(os.homedir(), ".quiz-app");
-        }
-        return path.join(userDataPath, isDev ? "quiz-app-dev.db" : "quiz-app.db");
-    }
-    /**
-     * Initialize SQLite database connection
+     * Initialize SQLite database with optimized settings
      */
     async initialize() {
         if (this.db) {
             return this.db;
         }
         try {
-            const dbPath = await this.getDatabasePath();
-            console.log("Initializing database at:", dbPath);
-            this.sqlite = new Database(dbPath);
+            console.log(`Initializing SQLite database at: ${this.dbPath}`);
+            this.sqlite = new better_sqlite3_1.default(this.dbPath);
             this.sqlite.pragma("journal_mode = WAL");
             this.sqlite.pragma("foreign_keys = ON");
             this.sqlite.pragma("synchronous = NORMAL");
             this.sqlite.pragma("cache_size = 1000");
             this.sqlite.pragma("temp_store = MEMORY");
-            this.db = drizzle(this.sqlite);
+            this.db = (0, better_sqlite3_2.drizzle)(this.sqlite, { schema: local_schema_js_1.localSchema });
             await this.createTables();
-            console.log("Database initialized successfully");
+            console.log("SQLite database initialized successfully with Drizzle ORM");
             return this.db;
         }
         catch (error) {
-            console.error("Failed to initialize database:", error);
-            throw error;
-        }
-    }
-    /**
-     * Create tables using raw SQL for initial setup
-     */
-    async createTables() {
-        if (!this.sqlite) {
-            throw new Error("SQLite instance not initialized");
-        }
-        const createUsersTable = `
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        student_code TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        class TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        last_synced TEXT,
-        is_active INTEGER DEFAULT 1
-      )
-    `;
-        const createSubjectsTable = `
-      CREATE TABLE IF NOT EXISTS subjects (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        subject_code TEXT UNIQUE NOT NULL,
-        description TEXT,
-        class TEXT NOT NULL,
-        total_questions INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_active INTEGER DEFAULT 1
-      )
-    `;
-        const createQuestionsTable = `
-      CREATE TABLE IF NOT EXISTS questions (
-        id TEXT PRIMARY KEY,
-        subject_id TEXT NOT NULL,
-        text TEXT NOT NULL,
-        options TEXT NOT NULL,
-        answer TEXT NOT NULL,
-        difficulty_level INTEGER DEFAULT 1,
-        question_order INTEGER,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_active INTEGER DEFAULT 1,
-        FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
-      )
-    `;
-        const createQuizAttemptsTable = `
-      CREATE TABLE IF NOT EXISTS quiz_attempts (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        subject_id TEXT NOT NULL,
-        answers TEXT,
-        score INTEGER,
-        total_questions INTEGER NOT NULL,
-        submitted INTEGER DEFAULT 0,
-        synced INTEGER DEFAULT 0,
-        started_at TEXT NOT NULL,
-        submitted_at TEXT,
-        updated_at TEXT NOT NULL,
-        sync_attempted_at TEXT,
-        sync_error TEXT,
-        session_duration INTEGER,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
-      )
-    `;
-        const createSyncLogTable = `
-      CREATE TABLE IF NOT EXISTS sync_log (
-        id TEXT PRIMARY KEY,
-        operation_type TEXT NOT NULL,
-        table_name TEXT NOT NULL,
-        record_id TEXT NOT NULL,
-        status TEXT NOT NULL,
-        error_message TEXT,
-        attempted_at TEXT NOT NULL,
-        completed_at TEXT
-      )
-    `;
-        const createIndexes = [
-            "CREATE INDEX IF NOT EXISTS idx_users_student_code ON users(student_code)",
-            "CREATE INDEX IF NOT EXISTS idx_subjects_subject_code ON subjects(subject_code)",
-            "CREATE INDEX IF NOT EXISTS idx_questions_subject_id ON questions(subject_id)",
-            "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user_id ON quiz_attempts(user_id)",
-            "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_subject_id ON quiz_attempts(subject_id)",
-            "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_synced ON quiz_attempts(synced)",
-            "CREATE INDEX IF NOT EXISTS idx_sync_log_status ON sync_log(status)",
-            "CREATE INDEX IF NOT EXISTS idx_sync_log_table_record ON sync_log(table_name, record_id)",
-        ];
-        try {
-            this.sqlite.exec(createUsersTable);
-            this.sqlite.exec(createSubjectsTable);
-            this.sqlite.exec(createQuestionsTable);
-            this.sqlite.exec(createQuizAttemptsTable);
-            this.sqlite.exec(createSyncLogTable);
-            createIndexes.forEach((indexSql) => {
-                this.sqlite.exec(indexSql);
-            });
-            console.log("Database tables created successfully");
-        }
-        catch (error) {
-            console.error("Failed to create tables:", error);
+            console.error("Failed to initialize SQLite database:", error);
             throw error;
         }
     }
@@ -176,45 +60,157 @@ export class SQLiteManager {
         return this.db;
     }
     /**
-     * Close database connection
+     * Check if database is connected
      */
-    close() {
-        if (this.sqlite) {
-            this.sqlite.close();
-            this.sqlite = null;
-            this.db = null;
-            console.log("Database connection closed");
+    isConnected() {
+        return this.db !== null && this.sqlite !== null;
+    }
+    /**
+     * Create tables with proper indexes
+     */
+    async createTables() {
+        if (!this.sqlite) {
+            throw new Error("SQLite instance not available");
+        }
+        this.sqlite.pragma("foreign_keys = ON");
+        const createTableQueries = [
+            // Users table
+            `CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        student_code TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        class TEXT NOT NULL CHECK (class IN ('SS2', 'JSS3', 'BASIC5')),
+        gender TEXT NOT NULL CHECK (gender IN ('MALE', 'FEMALE')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_synced TEXT,
+        is_active INTEGER DEFAULT 1,
+        last_login TEXT
+      )`,
+            // Subjects table
+            `CREATE TABLE IF NOT EXISTS subjects (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+        subject_code TEXT UNIQUE NOT NULL,
+        description TEXT,
+        class TEXT NOT NULL CHECK (class IN ('SS2', 'JSS3', 'BASIC5')),
+        total_questions INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        is_active INTEGER DEFAULT 1
+      )`,
+            // Questions table
+            `CREATE TABLE IF NOT EXISTS questions (
+         id TEXT PRIMARY KEY,
+  subject_id TEXT NOT NULL,
+  subject_code TEXT NOT NULL,
+  text TEXT NOT NULL,
+  options TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  question_order INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  explanation TEXT,
+  is_active INTEGER DEFAULT 1,
+  FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+      )`,
+            // Quiz attempts table
+            `CREATE TABLE IF NOT EXISTS quiz_attempts (
+         id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  subject_id TEXT NOT NULL,
+  answers TEXT,
+  score INTEGER,
+  total_questions INTEGER NOT NULL,
+  submitted INTEGER DEFAULT 0,
+  synced INTEGER DEFAULT 0,
+  started_at TEXT NOT NULL,
+  submitted_at TEXT,
+  updated_at TEXT NOT NULL,
+  sync_attempted_at TEXT,
+  sync_error TEXT,
+  session_duration INTEGER,
+  elapsed_time INTEGER DEFAULT 0,
+  last_active_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+      )`,
+            // Sync log table
+            `CREATE TABLE IF NOT EXISTS sync_log (
+        id TEXT PRIMARY KEY,
+        operation_type TEXT NOT NULL,
+          table_name TEXT NOT NULL,
+         record_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failed', 'pending')),
+  error_message TEXT,
+  attempted_at TEXT NOT NULL,
+  completed_at TEXT
+      )`,
+            // Sync timestamps table
+            `CREATE TABLE IF NOT EXISTS sync_timestamps (
+       table_name TEXT PRIMARY KEY,
+  last_pull_sync TEXT,
+  last_push_sync TEXT,
+  last_full_sync TEXT
+      )`,
+        ];
+        const createIndexQueries = [
+            "CREATE INDEX IF NOT EXISTS idx_users_student_code ON users(student_code)",
+            "CREATE INDEX IF NOT EXISTS idx_users_class ON users(class)",
+            "CREATE INDEX IF NOT EXISTS idx_subjects_subject_code ON subjects(subject_code)",
+            "CREATE INDEX IF NOT EXISTS idx_subjects_class ON subjects(class)",
+            "CREATE INDEX IF NOT EXISTS idx_questions_subject_id ON questions(subject_id)",
+            "CREATE INDEX IF NOT EXISTS idx_questions_subject_code ON questions(subject_code)",
+            "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user_id ON quiz_attempts(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_subject_id ON quiz_attempts(subject_id)",
+            "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_submitted ON quiz_attempts(submitted)",
+            "CREATE INDEX IF NOT EXISTS idx_sync_log_status ON sync_log(status)",
+            "CREATE INDEX IF NOT EXISTS idx_sync_log_table_name ON sync_log(table_name)",
+        ];
+        try {
+            for (const query of createTableQueries) {
+                this.sqlite.exec(query);
+            }
+            for (const query of createIndexQueries) {
+                this.sqlite.exec(query);
+            }
+            console.log("All tables and indexes created successfully");
+        }
+        catch (error) {
+            console.error("Error creating tables:", error);
+            throw error;
         }
     }
     /**
      * Execute raw SQL query
      */
-    executeRawSQL(sql, params = []) {
+    executeRawSQL(queryText, params = []) {
         if (!this.sqlite) {
-            throw new Error("Database not initialized");
+            throw new Error("SQLite instance not available");
         }
         try {
-            const stmt = this.sqlite.prepare(sql);
+            const stmt = this.sqlite.prepare(queryText);
             return stmt.all(...params);
         }
         catch (error) {
-            console.error("Failed to execute SQL:", sql, error);
+            console.error("Failed to execute SQLite query:", queryText, error);
             throw error;
         }
     }
     /**
-     * Run raw SQL query (for INSERT, UPDATE, DELETE)
+     * Execute raw SQL statement (INSERT, UPDATE, DELETE)
      */
-    runRawSQL(sql, params = []) {
+    runRawSQL(queryText, params = []) {
         if (!this.sqlite) {
-            throw new Error("Database not initialized");
+            throw new Error("SQLite instance not available");
         }
         try {
-            const stmt = this.sqlite.prepare(sql);
+            const stmt = this.sqlite.prepare(queryText);
             return stmt.run(...params);
         }
         catch (error) {
-            console.error("Failed to run SQL:", sql, error);
+            console.error("Failed to run SQLite statement:", queryText, error);
             throw error;
         }
     }
@@ -223,32 +219,47 @@ export class SQLiteManager {
      */
     checkIntegrity() {
         if (!this.sqlite) {
-            throw new Error("Database not initialized");
+            return false;
         }
         try {
             const result = this.sqlite.pragma("integrity_check");
-            return (Array.isArray(result) &&
-                result[0] &&
-                result[0]["integrity_check"] === "ok");
+            return result[0]?.integrity_check === "ok";
         }
         catch (error) {
-            console.error("Database integrity check failed:", error);
+            console.error("Integrity check failed:", error);
             return false;
         }
     }
     /**
-     * Backup database
+     * Create database backup
      */
-    backup(backupPath) {
+    async backup(backupPath) {
         if (!this.sqlite) {
-            throw new Error("Database not initialized");
+            return { success: false, error: "Database not initialized" };
         }
         try {
-            this.sqlite.backup(backupPath);
-            console.log("Database backed up to:", backupPath);
+            await this.sqlite.backup(backupPath);
+            return { success: true };
         }
         catch (error) {
-            console.error("Failed to backup database:", error);
+            const errorMessage = error instanceof Error ? error.message : "Unknown error";
+            console.error("Backup failed:", error);
+            return { success: false, error: errorMessage };
+        }
+    }
+    /**
+     * Force WAL checkpoint
+     */
+    checkpoint() {
+        if (!this.sqlite) {
+            throw new Error("SQLite instance not available");
+        }
+        try {
+            this.sqlite.pragma("wal_checkpoint(TRUNCATE)");
+            console.log("WAL checkpoint completed");
+        }
+        catch (error) {
+            console.error("WAL checkpoint failed:", error);
             throw error;
         }
     }
@@ -257,31 +268,34 @@ export class SQLiteManager {
      */
     getStats() {
         if (!this.sqlite) {
-            throw new Error("Database not initialized");
+            return { connected: false };
         }
         try {
-            const pageCount = this.sqlite.pragma("page_count", {
-                simple: true,
-            });
-            const pageSize = this.sqlite.pragma("page_size", {
-                simple: true,
-            });
-            const freelistCount = this.sqlite.pragma("freelist_count", {
-                simple: true,
-            });
             return {
-                totalPages: pageCount,
-                pageSize,
-                freePages: freelistCount,
-                totalSize: pageCount * pageSize,
-                freeSize: freelistCount * pageSize,
+                connected: true,
+                journalMode: this.sqlite.pragma("journal_mode", { simple: true }),
+                foreignKeys: this.sqlite.pragma("foreign_keys", { simple: true }),
+                synchronous: this.sqlite.pragma("synchronous", { simple: true }),
+                cacheSize: this.sqlite.pragma("cache_size", { simple: true }),
+                walCheckpoint: this.sqlite.pragma("wal_checkpoint", { simple: true }),
             };
         }
         catch (error) {
             console.error("Failed to get database stats:", error);
-            throw error;
+            return { connected: false, error: error };
         }
     }
+    /**
+     * Close database connection
+     */
+    close() {
+        if (this.sqlite) {
+            this.sqlite.close();
+            this.sqlite = null;
+        }
+        this.db = null;
+        console.log("SQLite database connection closed");
+    }
 }
+exports.SQLiteManager = SQLiteManager;
 SQLiteManager.instance = null;
-export const sqliteManager = SQLiteManager.getInstance();

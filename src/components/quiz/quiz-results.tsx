@@ -1,25 +1,41 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/lib";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { SubmissionResult } from "../../types";
+import { AuthenticationService } from "@/lib/auth/authentication-service";
+import { useRouter } from "next/navigation";
+import type { SubmissionResult, User, Subject } from "@/types/app";
 
 interface QuizResultsProps {
   result: SubmissionResult;
   onExit: () => void;
   onRetakeQuiz?: () => void;
-  subjectName?: string;
-  studentName?: string;
+  student?: User;
+  subject?: Subject;
 }
 
 export function QuizResults({
   result,
   onExit,
   onRetakeQuiz,
-  subjectName,
-  studentName,
+  student,
+  subject,
 }: QuizResultsProps) {
+  const router = useRouter();
+  const authService = AuthenticationService.getInstance();
+
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+      router.push("/");
+    } catch (error) {
+      console.error("Logout failed:", error);
+
+      router.push("/");
+    }
+  };
+
   if (!result.success) {
     return (
       <div className="w-full max-w-4xl mx-auto p-6">
@@ -66,7 +82,6 @@ export function QuizResults({
 
   return (
     <div className="w-full max-w-4xl mx-auto p-6 space-y-8">
-      {/* Header */}
       <div className="text-center">
         <div className="mb-4">
           <Badge className="bg-correct-500 text-white text-base px-4 py-2">
@@ -87,21 +102,50 @@ export function QuizResults({
         <h1 className="text-3xl font-bold text-gray-900 mb-2 font-sans uppercase">
           Quiz Results
         </h1>
-        {subjectName && (
-          <p className="text-lg text-gray-600">
+        {(subject?.name || "") && (
+          <p className="text-lg text-gray-600 mb-2">
             Subject:{" "}
-            <span className="font-medium text-brand-700">{subjectName}</span>
+            <span className="font-medium text-brand-700 font-mono">
+              {subject?.name || ""}
+            </span>
           </p>
         )}
-        {studentName && (
-          <p className="text-gray-600">
-            Student:{" "}
-            <span className="font-medium text-brand-700">{studentName}</span>
-          </p>
+
+        {student && (
+          <div className="bg-gray-50 rounded-lg p-4 mx-auto max-w-md border border-gray-200 mb-4">
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">
+              Student Details
+            </h3>
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">Name:</span>
+                <span className="text-sm font-medium text-brand-700">
+                  {student.name}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">Student Code:</span>
+                <span className="text-sm font-mono font-medium text-brand-700">
+                  {student.studentCode}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">Class:</span>
+                <span className="text-sm font-medium text-brand-700">
+                  {student.class}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">Gender:</span>
+                <span className="text-sm font-medium text-brand-700">
+                  {student.gender}
+                </span>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Score Card */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
         <div
           className={cn("px-8 py-6", {
@@ -298,22 +342,24 @@ export function QuizResults({
         </div>
       </div>
 
-      {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
-        {onRetakeQuiz && (
+        {/* {onRetakeQuiz && (
           <Button
             onClick={onRetakeQuiz}
             className="bg-brand-500 hover:bg-brand-600 text-white px-8 py-3"
           >
             Retake Quiz
           </Button>
-        )}
-        <Button onClick={onExit} variant="secondary" className="px-8 py-3">
-          Exit to Dashboard
+        )} */}
+        <Button
+          onClick={handleLogout}
+          variant="outline"
+          className="px-8 py-3 border-gray-300 text-gray-700 hover:bg-gray-50"
+        >
+          Logout
         </Button>
       </div>
 
-      {/* Additional Info */}
       <div className="text-center">
         <p className="text-sm text-gray-500">
           Your quiz has been automatically saved and will be synced when online.
