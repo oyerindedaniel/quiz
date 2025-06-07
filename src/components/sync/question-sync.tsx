@@ -15,7 +15,7 @@ import {
   XCircle,
   AlertCircle,
 } from "lucide-react";
-import { SyncResult } from "@/types/app";
+import type { QuestionSyncResult } from "@/types/app";
 import { isElectron } from "@/utils/lib";
 
 const dbService = new IPCDatabaseService();
@@ -24,7 +24,8 @@ export default function QuestionSync() {
   const [isLoading, setIsLoading] = useState(false);
   const [subjectCodesInput, setSubjectCodesInput] = useState("");
   const [replaceMode, setReplaceMode] = useState(false);
-  const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null);
+  const [lastSyncResult, setLastSyncResult] =
+    useState<QuestionSyncResult | null>(null);
 
   const handleSync = async () => {
     if (!isElectron()) {
@@ -84,7 +85,7 @@ export default function QuestionSync() {
     .filter((code) => code.length > 0);
 
   return (
-    <div className="w-full max-w-2xl bg-white rounded-lg border border-brand-200 p-6 space-y-6 font-sans">
+    <div className="w-full max-w-2xl bg-white rounded-lg border border-brand-200 p-6 space-y-6 font-sans overflow-y-auto">
       <div className="space-y-2">
         <h3 className="text-lg font-bold text-brand-900 flex items-center gap-2 font-sans">
           <Database className="h-5 w-5 text-brand-600" />

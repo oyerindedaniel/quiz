@@ -122,6 +122,9 @@ class MainDatabaseService {
     async findIncompleteAttempt(userId, subjectId) {
         return this.localDb.findIncompleteAttempt(userId, subjectId);
     }
+    async hasSubmittedAttempt(userId, subjectId) {
+        return this.localDb.hasSubmittedAttempt(userId, subjectId);
+    }
     async createQuizAttempt(attemptData) {
         return this.localDb.createQuizAttempt(attemptData);
     }
@@ -744,18 +747,26 @@ class MainDatabaseService {
      */
     async changeUserPin(studentCode, newPin) {
         try {
-            if (!this.remoteDb) {
-                throw new Error("Remote database service unavailable");
+            const localResult = await this.localDb.changeUserPin(studentCode, newPin);
+            if (!localResult.success) {
+                return localResult;
             }
-            const hashedPin = await bcryptjs_1.default.hash(newPin, 10);
-            const result = await this.remoteDb.changeUserPin(studentCode, hashedPin);
-            return result;
+            if (this.remoteDb && this.isRemoteAvailable()) {
+                try {
+                    await this.remoteDb.changeUserPin(studentCode, newPin);
+                    console.log(`MainDatabaseService: Synced change user PIN (${studentCode}) to remote database`);
+                }
+                catch (error) {
+                    console.warn(`MainDatabaseService: Failed to sync change user PIN to remote:`, error);
+                }
+            }
+            return localResult;
         }
         catch (error) {
-            console.error("Change user PIN error:", error);
+            console.error("MainDatabaseService: Error changing user PIN:", error);
             return {
                 success: false,
-                error: error instanceof Error ? error.message : "Failed to change user PIN",
+                error: error instanceof Error ? error.message : "Unknown error",
             };
         }
     }

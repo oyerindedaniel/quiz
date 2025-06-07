@@ -487,6 +487,18 @@ class QuizApp {
     );
 
     ipcMain.handle(
+      "quiz:has-submitted-attempt",
+      async (_, userId: string, subjectId: string) => {
+        try {
+          return await this.dbService.hasSubmittedAttempt(userId, subjectId);
+        } catch (error) {
+          console.error("Check submitted attempt error:", error);
+          throw error;
+        }
+      }
+    );
+
+    ipcMain.handle(
       "quiz:create-attempt",
       async (
         _,
@@ -630,6 +642,29 @@ class QuizApp {
       }
     );
 
+    ipcMain.handle(
+      "remote:create-student",
+      async (_, studentData: Omit<NewUser, "createdAt" | "updatedAt">) => {
+        try {
+          const authCheck = await this.validateAdminAuth();
+          if (!authCheck.valid) {
+            throw new Error("Unauthorized: Admin authentication required");
+          }
+
+          return await this.dbService.remoteCreateStudent(studentData);
+        } catch (error) {
+          console.error("Remote create student error:", error);
+          if (
+            error instanceof Error &&
+            error.message.includes("Unauthorized")
+          ) {
+            throw error;
+          }
+          throw error;
+        }
+      }
+    );
+
     // User operations
     ipcMain.handle(
       "user:find-by-student-code",
@@ -763,6 +798,27 @@ class QuizApp {
           return await this.dbService.syncQuestions(options);
         } catch (error) {
           console.error("Sync questions error:", error);
+          return {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Unknown sync error",
+          };
+        }
+      }
+    );
+
+    ipcMain.handle(
+      "sync:sync-users",
+      async (
+        _,
+        options?: {
+          replaceExisting?: boolean;
+        }
+      ) => {
+        try {
+          return await this.dbService.syncUsers(options);
+        } catch (error) {
+          console.error("Sync users error:", error);
           return {
             success: false,
             error:
@@ -1351,7 +1407,9 @@ class QuizApp {
         error.message.includes("ECONNRESET") ||
         error.message.includes("Connection terminated") ||
         error.message.includes("ENOTFOUND") ||
-        error.message.includes("ETIMEDOUT")
+        error.message.includes("ETIMEDOUT") ||
+        error.message.includes("Connection terminated unexpectedly") ||
+        error.message.includes("connect ECONNREFUSED")
       ) {
         console.log("Network error handled gracefully, continuing...");
         return;
@@ -1382,13 +1440,14 @@ class QuizApp {
         reasonStr.includes("ECONNRESET") ||
         reasonStr.includes("Connection terminated") ||
         reasonStr.includes("ENOTFOUND") ||
-        reasonStr.includes("ETIMEDOUT")
+        reasonStr.includes("ETIMEDOUT") ||
+        reasonStr.includes("Connection terminated unexpectedly") ||
+        reasonStr.includes("connect ECONNREFUSED")
       ) {
         console.log("Network promise rejection handled gracefully");
         return;
       }
 
-      // Log other rejections but don't crash the app
       console.warn("Promise rejection handled, continuing operation...");
     });
 

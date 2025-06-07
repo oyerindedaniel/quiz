@@ -27,7 +27,8 @@ import type {
   AdminCreationResult,
   SyncOperationType,
   UserSeedData,
-  SyncResult,
+  QuestionSyncResult,
+  UserSyncResult,
 } from "../../src/types/app.js";
 import type { SyncTrigger } from "../../src/lib/sync/sync-engine.js";
 
@@ -176,6 +177,13 @@ export class MainDatabaseService {
     subjectId: string
   ): Promise<QuizAttempt | null> {
     return this.localDb.findIncompleteAttempt(userId, subjectId);
+  }
+
+  async hasSubmittedAttempt(
+    userId: string,
+    subjectId: string
+  ): Promise<boolean> {
+    return this.localDb.hasSubmittedAttempt(userId, subjectId);
   }
 
   async createQuizAttempt(
@@ -623,12 +631,48 @@ export class MainDatabaseService {
   }
 
   /**
+   * Create a student directly to remote database
+   */
+  async remoteCreateStudent(
+    studentData: Omit<NewUser, "createdAt" | "updatedAt">
+  ): Promise<void> {
+    if (!this.remoteDb || !this.remoteDb.isConnected()) {
+      throw new Error("Remote database not available");
+    }
+
+    try {
+      const hashedPassword = await bcrypt.hash(studentData.passwordHash, 10);
+
+      const studentDataWithHashedPassword = {
+        ...studentData,
+        passwordHash: hashedPassword,
+      };
+
+      await this.remoteDb.createUser({
+        ...studentDataWithHashedPassword,
+        lastLogin: null,
+        isActive: true,
+      });
+      console.log(
+        `Remote student created successfully: ${studentData.studentCode}`
+      );
+    } catch (error) {
+      console.error("Remote student creation error:", error);
+      throw new Error(
+        `Failed to create student: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    }
+  }
+
+  /**
    * sync questions from remote database to local database
    */
   async syncQuestions(options?: {
-    replaceExisting?: boolean; // If true, completely replace local questions for each subject
-    subjectCodes?: string[]; // If provided, only sync specific subjects
-  }): Promise<SyncResult> {
+    replaceExisting?: boolean;
+    subjectCodes?: string[];
+  }): Promise<QuestionSyncResult> {
     const replaceExisting = options?.replaceExisting || false;
     const targetSubjectCodes = options?.subjectCodes;
 
@@ -888,6 +932,129 @@ export class MainDatabaseService {
   }
 
   /**
+   * Sync users from remote database to local database
+   */
+  async syncUsers(options?: {
+    replaceExisting?: boolean;
+  }): Promise<UserSyncResult> {
+    const replaceExisting = options?.replaceExisting || false;
+
+    try {
+      if (!this.remoteDb || !this.remoteDb.isConnected()) {
+        return {
+          success: false,
+          error: "Remote database not available",
+        };
+      }
+
+      console.log("Starting user sync...", { replaceExisting });
+
+      const remoteUsers = await this.remoteDb.getAllUsers();
+
+      if (remoteUsers.length === 0) {
+        return {
+          success: true,
+          usersSynced: 0,
+          classesSynced: 0,
+          error: "No users found in remote database",
+        };
+      }
+
+      console.log(`Remote data: ${remoteUsers.length} users`);
+
+      const usersByClass = new Map<string, typeof remoteUsers>();
+      remoteUsers.forEach((user) => {
+        const userClass = user.class;
+        if (!usersByClass.has(userClass)) {
+          usersByClass.set(userClass, []);
+        }
+        usersByClass.get(userClass)!.push(user);
+      });
+
+      let totalSyncedUsers = 0;
+      let newUsers = 0;
+      let updatedUsers = 0;
+      let skippedUsers = 0;
+
+      await this.localDb.transaction(async (tx) => {
+        for (const [userClass, classUsers] of usersByClass) {
+          try {
+            console.log(
+              `Processing ${classUsers.length} users for class: ${userClass}`
+            );
+
+            for (const remoteUser of classUsers) {
+              try {
+                const existingUser = await this.localDb.findUserByStudentCode(
+                  remoteUser.studentCode
+                );
+
+                if (existingUser) {
+                  if (replaceExisting) {
+                    // Update existing user
+                    await this.localDb.updateUser(existingUser.id, {
+                      name: remoteUser.name,
+                      passwordHash: remoteUser.passwordHash,
+                      class: remoteUser.class,
+                      gender: remoteUser.gender,
+                      isActive: remoteUser.isActive,
+                    });
+                    updatedUsers++;
+                  } else {
+                    skippedUsers++;
+                  }
+                } else {
+                  // Create new user
+                  await this.localDb.createUser({
+                    id: remoteUser.id,
+                    name: remoteUser.name,
+                    studentCode: remoteUser.studentCode,
+                    passwordHash: remoteUser.passwordHash,
+                    class: remoteUser.class,
+                    gender: remoteUser.gender,
+                    isActive: remoteUser.isActive,
+                  });
+                  newUsers++;
+                }
+                totalSyncedUsers++;
+              } catch (userProcessError) {
+                console.warn(
+                  `Error processing user ${remoteUser.studentCode}:`,
+                  userProcessError
+                );
+                skippedUsers++;
+              }
+            }
+          } catch (classError) {
+            console.error(`Failed to process class ${userClass}:`, classError);
+            skippedUsers += classUsers.length;
+          }
+        }
+      });
+
+      const result = {
+        success: true,
+        usersSynced: totalSyncedUsers,
+        classesSynced: usersByClass.size,
+        details: {
+          newUsers,
+          updatedUsers,
+          skippedUsers,
+        },
+      };
+
+      console.log("User sync completed:", result);
+      return result;
+    } catch (error) {
+      console.error("Sync users error:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown sync error",
+      };
+    }
+  }
+
+  /**
    * Get student credentials (for admin panel)
    */
   async getStudentCredentials(): Promise<Array<UserSeedData>> {
@@ -1013,26 +1180,38 @@ export class MainDatabaseService {
   /**
    * Change user PIN
    */
+
   async changeUserPin(
     studentCode: string,
     newPin: string
   ): Promise<{ success: boolean; error?: string; updated?: boolean }> {
     try {
-      if (!this.remoteDb) {
-        throw new Error("Remote database service unavailable");
+      const localResult = await this.localDb.changeUserPin(studentCode, newPin);
+
+      if (!localResult.success) {
+        return localResult;
       }
 
-      const hashedPin = await bcrypt.hash(newPin, 10);
+      if (this.remoteDb && this.isRemoteAvailable()) {
+        try {
+          await this.remoteDb.changeUserPin(studentCode, newPin);
+          console.log(
+            `MainDatabaseService: Synced change user PIN (${studentCode}) to remote database`
+          );
+        } catch (error) {
+          console.warn(
+            `MainDatabaseService: Failed to sync change user PIN to remote:`,
+            error
+          );
+        }
+      }
 
-      const result = await this.remoteDb.changeUserPin(studentCode, hashedPin);
-
-      return result;
+      return localResult;
     } catch (error) {
-      console.error("Change user PIN error:", error);
+      console.error("MainDatabaseService: Error changing user PIN:", error);
       return {
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to change user PIN",
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }

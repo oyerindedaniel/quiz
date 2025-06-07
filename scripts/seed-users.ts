@@ -8,7 +8,7 @@
 import { config } from "dotenv";
 config();
 
-import { UserSeedingService } from "../src/lib/seeding/user-seeding-serviceice";
+import { UserSeedingService } from "../src/lib/seeding/user-seeding-service";
 import { RemoteDatabaseService } from "../src/lib/database/remote-database-service";
 
 async function main() {

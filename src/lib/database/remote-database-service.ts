@@ -275,7 +275,11 @@ export class RemoteDatabaseService {
       .where(
         and(
           eq(remoteSchema.questions.subjectId, subjectId),
-          eq(remoteSchema.questions.isActive, true)
+          eq(remoteSchema.questions.isActive, true),
+
+          sql`${remoteSchema.questions.text} NOT LIKE '[PASSAGE]%'`,
+          sql`${remoteSchema.questions.text} NOT LIKE '[HEADER]%'`,
+          sql`${remoteSchema.questions.text} NOT LIKE '[IMAGE]%'`
         )
       )
       .orderBy(remoteSchema.questions.questionOrder);
@@ -368,7 +372,8 @@ export class RemoteDatabaseService {
           eq(remoteSchema.questions.isActive, true),
 
           sql`${remoteSchema.questions.text} NOT LIKE '[PASSAGE]%'`,
-          sql`${remoteSchema.questions.text} NOT LIKE '[HEADER]%'`
+          sql`${remoteSchema.questions.text} NOT LIKE '[HEADER]%'`,
+          sql`${remoteSchema.questions.text} NOT LIKE '[IMAGE]%'`
         )
       );
 

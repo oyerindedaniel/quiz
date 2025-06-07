@@ -27,6 +27,8 @@ const electronAPI = {
       ipcRenderer.invoke("quiz:get-questions", subjectId),
     findIncompleteAttempt: (userId: string, subjectId: string) =>
       ipcRenderer.invoke("quiz:find-incomplete-attempt", userId, subjectId),
+    hasSubmittedAttempt: (userId: string, subjectId: string) =>
+      ipcRenderer.invoke("quiz:has-submitted-attempt", userId, subjectId),
     createAttempt: (
       attemptData: Omit<NewQuizAttempt, "startedAt" | "updatedAt">
     ) => ipcRenderer.invoke("quiz:create-attempt", attemptData),
@@ -88,6 +90,8 @@ const electronAPI = {
       replaceExisting?: boolean;
       subjectCodes?: string[];
     }) => ipcRenderer.invoke("sync:sync-questions", options),
+    syncUsers: (options?: { replaceExisting?: boolean }) =>
+      ipcRenderer.invoke("sync:sync-users", options),
     syncLocalDB: () => ipcRenderer.invoke("sync:sync-local-db"),
     isLocalDBEmpty: () => ipcRenderer.invoke("sync:is-local-db-empty"),
   },
@@ -147,6 +151,15 @@ const electronAPI = {
       ipcRenderer.invoke("admin:toggle-user-active", studentCode, isActive),
     changeUserPin: (studentCode: string, newPin: string) =>
       ipcRenderer.invoke("admin:change-user-pin", studentCode, newPin),
+  },
+
+  // Remote operations (secure)
+  remote: {
+    bulkCreateQuestions: (
+      questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
+    ) => ipcRenderer.invoke("remote:bulk-create-questions", questions),
+    createStudent: (studentData: Omit<NewUser, "createdAt" | "updatedAt">) =>
+      ipcRenderer.invoke("remote:create-student", studentData),
   },
 };
 

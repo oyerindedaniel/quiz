@@ -13,6 +13,7 @@ const electronAPI = {
     quiz: {
         getQuestions: (subjectId) => electron_1.ipcRenderer.invoke("quiz:get-questions", subjectId),
         findIncompleteAttempt: (userId, subjectId) => electron_1.ipcRenderer.invoke("quiz:find-incomplete-attempt", userId, subjectId),
+        hasSubmittedAttempt: (userId, subjectId) => electron_1.ipcRenderer.invoke("quiz:has-submitted-attempt", userId, subjectId),
         createAttempt: (attemptData) => electron_1.ipcRenderer.invoke("quiz:create-attempt", attemptData),
         getAttempt: (attemptId) => electron_1.ipcRenderer.invoke("quiz:get-attempt", attemptId),
         saveAnswer: (attemptId, questionId, answer) => electron_1.ipcRenderer.invoke("quiz:save-answer", attemptId, questionId, answer),

@@ -45,10 +45,36 @@ export class QuizController {
   }
 
   /**
+   * Check if there's an existing submitted attempt (to prevent retakes)
+   */
+  async hasSubmittedAttempt(
+    userId: string,
+    subjectId: string
+  ): Promise<boolean> {
+    try {
+      return await this.ipcDb.hasSubmittedAttempt(userId, subjectId);
+    } catch (error) {
+      console.error("Failed to check for submitted attempt:", error);
+      return false;
+    }
+  }
+
+  /**
    * Start a new quiz or resume existing one
    */
   async startQuiz(userId: string, subjectId: string): Promise<QuizSession> {
     try {
+      const hasSubmitted = await this.ipcDb.hasSubmittedAttempt(
+        userId,
+        subjectId
+      );
+
+      if (hasSubmitted) {
+        throw new Error(
+          "You have already completed this quiz. Retakes are not allowed."
+        );
+      }
+
       const existingAttempt = await this.ipcDb.findIncompleteAttempt(
         userId,
         subjectId
@@ -61,7 +87,7 @@ export class QuizController {
       }
     } catch (error) {
       console.error("Failed to start quiz:", error);
-      throw new Error("Failed to start quiz. Please try again.");
+      throw error;
     }
   }
 
@@ -474,9 +500,7 @@ export class QuizController {
 
     return {
       totalScore: correctAnswers,
-      // TODO: this is a hack to get the total questions
-      totalQuestions:
-        QuestionProcessor.processQuestions(questions).actualQuestions.length,
+      totalQuestions: questions.length,
       correctAnswers,
     };
   }

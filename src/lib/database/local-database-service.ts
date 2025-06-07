@@ -113,6 +113,22 @@ export class LocalDatabaseService {
     });
   }
 
+  async updateUser(
+    userId: string,
+    userData: Partial<Omit<NewUser, "id" | "createdAt">>
+  ): Promise<void> {
+    const db = this.getDb();
+    const now = new Date().toISOString();
+
+    await db
+      .update(localSchema.users)
+      .set({
+        ...userData,
+        updatedAt: now,
+      })
+      .where(eq(localSchema.users.id, userId));
+  }
+
   // Subject operations
   async findSubjectByCode(subjectCode: string): Promise<Subject | null> {
     const db = this.getDb();
@@ -180,6 +196,26 @@ export class LocalDatabaseService {
     return attempts[0] || null;
   }
 
+  async hasSubmittedAttempt(
+    userId: string,
+    subjectId: string
+  ): Promise<boolean> {
+    const db = this.getDb();
+    const attempts = await db
+      .select()
+      .from(localSchema.quizAttempts)
+      .where(
+        and(
+          eq(localSchema.quizAttempts.userId, userId),
+          eq(localSchema.quizAttempts.subjectId, subjectId),
+          eq(localSchema.quizAttempts.submitted, true)
+        )
+      )
+      .limit(1);
+
+    return attempts.length > 0;
+  }
+
   async createQuizAttempt(
     attemptData: Omit<NewQuizAttempt, "startedAt" | "updatedAt">
   ): Promise<string> {
@@ -234,11 +270,10 @@ export class LocalDatabaseService {
       .set({
         answers: JSON.stringify(currentAnswers),
         updatedAt: new Date().toISOString(),
+        synced: false,
+        syncAttemptedAt: null,
       })
-      .where(eq(localSchema.quizAttempts.id, attemptId))
-      .returning();
-
-    console.log({ updatedAttempt });
+      .where(eq(localSchema.quizAttempts.id, attemptId));
   }
 
   async submitQuizAttempt(
@@ -285,7 +320,11 @@ export class LocalDatabaseService {
       .where(
         and(
           eq(localSchema.questions.subjectId, subjectId),
-          eq(localSchema.questions.isActive, true)
+          eq(localSchema.questions.isActive, true),
+
+          sql`${localSchema.questions.text} NOT LIKE '[PASSAGE]%'`,
+          sql`${localSchema.questions.text} NOT LIKE '[HEADER]%'`,
+          sql`${localSchema.questions.text} NOT LIKE '[IMAGE]%'`
         )
       )
       .orderBy(localSchema.questions.questionOrder);
@@ -319,7 +358,8 @@ export class LocalDatabaseService {
           eq(localSchema.questions.isActive, true),
 
           sql`${localSchema.questions.text} NOT LIKE '[PASSAGE]%'`,
-          sql`${localSchema.questions.text} NOT LIKE '[HEADER]%'`
+          sql`${localSchema.questions.text} NOT LIKE '[HEADER]%'`,
+          sql`${localSchema.questions.text} NOT LIKE '[IMAGE]%'`
         )
       );
 
@@ -760,12 +800,10 @@ export class LocalDatabaseService {
 
       let totalSynced = 0;
 
-      // Try to get remote database instance and pull data
       let remoteDb: RemoteDatabaseService | null = null;
       let remoteConnected = false;
 
       try {
-        // Check if we have the required environment variables
         if (process.env.NEON_DATABASE_URL) {
           remoteDb = RemoteDatabaseService.getInstance();
           await remoteDb.initialize(process.env.NEON_DATABASE_URL);
@@ -778,7 +816,6 @@ export class LocalDatabaseService {
         );
       }
 
-      // If remote is available, try to pull data from it
       if (remoteConnected && remoteDb) {
         try {
           console.log(
@@ -897,7 +934,6 @@ export class LocalDatabaseService {
         );
       }
 
-      // Fallback to auto-seeding (same as pullFreshData)
       console.log(
         "LocalDatabaseService: Performing automatic local database seeding..."
       );

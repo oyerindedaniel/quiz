@@ -240,7 +240,7 @@ class SyncEngine {
     }
     startPeriodicSync() {
         if (this.syncIntervalId) {
-            return; // Already running
+            return;
         }
         this.syncIntervalId = setInterval(async () => {
             try {
@@ -468,10 +468,8 @@ class SyncEngine {
                             elapsedTime: rawAttempt.elapsed_time,
                             lastActiveAt: rawAttempt.last_active_at,
                         };
-                        console.log("did transform");
                         await this.remoteDb.syncQuizAttempt(attempt);
                         await this.localDb.runRawSQL("UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ? WHERE id = ?", [new Date().toISOString(), attempt.id]);
-                        console.log("did sync");
                         pushedRecords++;
                         await this.logSyncOperation("push", "quiz_attempts", attempt.id, "success");
                     }
@@ -552,7 +550,6 @@ class SyncEngine {
                                 console.warn("Failed to create user:", user.studentCode, error);
                             }
                         }
-                        console.log("SyncEngine: Pulled users", syncData.users);
                         // Insert subjects
                         for (const subject of syncData.subjects) {
                             try {

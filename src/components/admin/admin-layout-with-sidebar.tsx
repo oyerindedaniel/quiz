@@ -74,7 +74,11 @@ const navigationData = [
           },
           {
             title: "Create User",
-            url: "/admin/users/create",
+            url: "/admin/users/create/user",
+          },
+          {
+            title: "Create Student",
+            url: "/admin/users/create/student",
           },
           {
             title: "User Credentials",

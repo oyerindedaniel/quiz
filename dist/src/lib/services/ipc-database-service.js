@@ -31,6 +31,10 @@ class IPCDatabaseService {
         this.checkElectronAPI();
         return window.electronAPI.quiz.findIncompleteAttempt(userId, subjectId);
     }
+    async hasSubmittedAttempt(userId, subjectId) {
+        this.checkElectronAPI();
+        return window.electronAPI.quiz.hasSubmittedAttempt(userId, subjectId);
+    }
     async createQuizAttempt(attemptData) {
         this.checkElectronAPI();
         return window.electronAPI.quiz.createAttempt(attemptData);

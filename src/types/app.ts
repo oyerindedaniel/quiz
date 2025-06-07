@@ -46,7 +46,7 @@ import type {
 } from "@/lib/database/remote-schema";
 import { SyncTrigger } from "@/lib/sync/sync-engine";
 
-// Generic Result Types - Base patterns for common result structures
+// Result Types
 export interface BaseResult {
   success: boolean;
   error?: string;
@@ -180,16 +180,6 @@ export interface SyncOperation<T = Record<string, unknown>> {
   timestamp: string;
 }
 
-export interface SyncResult {
-  success: boolean;
-  pushedRecords?: number;
-  pulledRecords?: number;
-  conflicts?: SyncConflict<Record<string, unknown>>[];
-  error?: string;
-  duration?: number;
-  note?: string; // Additional information about the sync operation
-}
-
 export interface SyncData {
   users: User[];
   subjects: Subject[];
@@ -307,6 +297,25 @@ export interface RepairResult {
   error?: string;
 }
 
+export interface RawQuizAttemptResult {
+  id: string;
+  user_id: string;
+  subject_id: string;
+  answers: string | null;
+  score: number | null;
+  total_questions: number;
+  submitted: number; // SQLite boolean as integer
+  synced: number; // SQLite boolean as integer
+  started_at: string;
+  submitted_at: string | null;
+  updated_at: string;
+  sync_attempted_at: string | null;
+  sync_error: string | null;
+  session_duration: number | null;
+  elapsed_time: number;
+  last_active_at: string | null;
+}
+
 // Electron API Types
 export interface DatabaseAPI {
   execute: (sql: string, params: unknown[]) => Promise<unknown[]>;
@@ -340,6 +349,7 @@ export interface QuizAPI {
   bulkCreateQuestions: (
     questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
   ) => Promise<QuestionCreationResult>;
+  hasSubmittedAttempt: (userId: string, subjectId: string) => Promise<boolean>;
   deleteQuizAttempts: (
     studentCode: string,
     subjectCode: string
@@ -385,8 +395,10 @@ export interface SyncAPI {
   syncQuestions: (options?: {
     replaceExisting?: boolean;
     subjectCodes?: string[];
-  }) => Promise<SyncResult>;
-
+  }) => Promise<QuestionSyncResult>;
+  syncUsers: (options?: {
+    replaceExisting?: boolean;
+  }) => Promise<UserSyncResult>;
   syncLocalDB: () => Promise<{
     success: boolean;
     message?: string;
@@ -475,6 +487,9 @@ export interface RemoteAPI {
   bulkCreateQuestions: (
     questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
   ) => Promise<QuestionCreationResult>;
+  createStudent: (
+    studentData: Omit<NewUser, "createdAt" | "updatedAt">
+  ) => Promise<void>;
 }
 
 export interface ElectronAPI {
@@ -574,11 +589,17 @@ export interface SyncConflict<T = Record<string, unknown>> {
   timestamp: string;
 }
 
-export interface SyncResult {
+export interface BaseSyncResult {
   success: boolean;
+  error?: string;
+  pushedRecords?: number;
+  pulledRecords?: number;
+  note?: string;
+}
+
+export interface QuestionSyncResult extends BaseSyncResult {
   questionsPulled?: number;
   subjectsSynced?: number;
-  error?: string;
   details?: {
     newSubjects: number;
     updatedQuestions: number;
@@ -587,6 +608,18 @@ export interface SyncResult {
     replacedSubjects: number;
   };
 }
+
+export interface UserSyncResult extends BaseSyncResult {
+  usersSynced?: number;
+  classesSynced?: number;
+  details?: {
+    newUsers: number;
+    updatedUsers: number;
+    skippedUsers: number;
+  };
+}
+
+export type SyncResult = QuestionSyncResult | UserSyncResult;
 
 // Admin Dashboard Types
 export interface AdminDashboardStats {

@@ -10,6 +10,7 @@ import type {
   SyncStatus,
   SyncResult,
   QuizAttempt,
+  RawQuizAttemptResult,
 } from "../../types/app.js";
 import { isElectron } from "../../utils/lib.js";
 
@@ -36,26 +37,6 @@ export interface SyncConfiguration {
 
 interface CountResult {
   count: number;
-}
-
-// Raw database result interface (reflects actual SQLite column names)
-interface RawQuizAttemptResult {
-  id: string;
-  user_id: string;
-  subject_id: string;
-  answers: string | null;
-  score: number | null;
-  total_questions: number;
-  submitted: number; // SQLite boolean as integer
-  synced: number; // SQLite boolean as integer
-  started_at: string;
-  submitted_at: string | null;
-  updated_at: string;
-  sync_attempted_at: string | null;
-  sync_error: string | null;
-  session_duration: number | null;
-  elapsed_time: number;
-  last_active_at: string | null;
 }
 
 export class SyncEngine {
@@ -349,7 +330,7 @@ export class SyncEngine {
 
   private startPeriodicSync(): void {
     if (this.syncIntervalId) {
-      return; // Already running
+      return;
     }
 
     this.syncIntervalId = setInterval(async () => {
@@ -667,15 +648,12 @@ export class SyncEngine {
               lastActiveAt: rawAttempt.last_active_at,
             };
 
-            console.log("did transform");
             await this.remoteDb.syncQuizAttempt(attempt);
 
             await this.localDb.runRawSQL(
               "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ? WHERE id = ?",
               [new Date().toISOString(), attempt.id]
             );
-
-            console.log("did sync");
 
             pushedRecords++;
             await this.logSyncOperation(
@@ -790,8 +768,6 @@ export class SyncEngine {
                 console.warn("Failed to create user:", user.studentCode, error);
               }
             }
-
-            console.log("SyncEngine: Pulled users", syncData.users);
 
             // Insert subjects
             for (const subject of syncData.subjects) {

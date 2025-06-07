@@ -225,7 +225,7 @@ class RemoteDatabaseService {
         return db
             .select()
             .from(remote_schema_js_1.remoteSchema.questions)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.subjectId, subjectId), (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.isActive, true)))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.subjectId, subjectId), (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.isActive, true), (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[PASSAGE]%'`, (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[HEADER]%'`, (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[IMAGE]%'`))
             .orderBy(remote_schema_js_1.remoteSchema.questions.questionOrder);
     }
     async createQuestion(questionData) {
@@ -285,7 +285,7 @@ class RemoteDatabaseService {
         const questionCount = await db
             .select()
             .from(remote_schema_js_1.remoteSchema.questions)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.subjectCode, subjectCode), (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.isActive, true), (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[PASSAGE]%'`, (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[HEADER]%'`));
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.subjectCode, subjectCode), (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.isActive, true), (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[PASSAGE]%'`, (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[HEADER]%'`, (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[IMAGE]%'`));
         const count = questionCount.length;
         await db
             .update(remote_schema_js_1.remoteSchema.subjects)

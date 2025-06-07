@@ -21,7 +21,8 @@ import type {
   QuestionWithStats,
   AnalyticsData,
   UserSeedData,
-  SyncResult,
+  UserSyncResult,
+  QuestionSyncResult,
 } from "../../types/app.js";
 import type { RemoteAdmin } from "../database/remote-schema.js";
 
@@ -47,6 +48,13 @@ export class IPCDatabaseService {
     return window.electronAPI.user.create(userData);
   }
 
+  async createStudent(
+    studentData: Omit<NewUser, "createdAt" | "updatedAt">
+  ): Promise<void> {
+    this.checkElectronAPI();
+    return window.electronAPI.remote.createStudent(studentData);
+  }
+
   // Subject operations
   async findSubjectByCode(subjectCode: string): Promise<Subject | null> {
     this.checkElectronAPI();
@@ -66,6 +74,14 @@ export class IPCDatabaseService {
   ): Promise<QuizAttempt | null> {
     this.checkElectronAPI();
     return window.electronAPI.quiz.findIncompleteAttempt(userId, subjectId);
+  }
+
+  async hasSubmittedAttempt(
+    userId: string,
+    subjectId: string
+  ): Promise<boolean> {
+    this.checkElectronAPI();
+    return window.electronAPI.quiz.hasSubmittedAttempt(userId, subjectId);
   }
 
   async createQuizAttempt(
@@ -313,9 +329,19 @@ export class IPCDatabaseService {
   async syncQuestions(options?: {
     replaceExisting?: boolean;
     subjectCodes?: string[];
-  }): Promise<SyncResult> {
+  }): Promise<QuestionSyncResult> {
     this.checkElectronAPI();
     return window.electronAPI.sync.syncQuestions(options);
+  }
+
+  /**
+   * Sync users from remote DB to local DB
+   */
+  async syncUsers(options?: {
+    replaceExisting?: boolean;
+  }): Promise<UserSyncResult> {
+    this.checkElectronAPI();
+    return window.electronAPI.sync.syncUsers(options);
   }
 
   /**

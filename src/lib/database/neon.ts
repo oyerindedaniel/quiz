@@ -42,11 +42,18 @@ export class NeonManager {
         connectionString: this.connectionString,
         max: 3,
         min: 1,
-        // idleTimeoutMillis: 10000,
-        // connectionTimeoutMillis: 5000,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+        statement_timeout: 60000,
+        query_timeout: 60000,
         ssl: {
           rejectUnauthorized: false,
         },
+      });
+
+      this.pool.on("error", (err) => {
+        console.warn("Neon pool error (handled gracefully):", err.message);
+        // Connections will be recreated as needed
       });
 
       this.db = drizzle(this.pool, { schema: remoteSchema });

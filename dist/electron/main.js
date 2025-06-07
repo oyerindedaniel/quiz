@@ -429,6 +429,15 @@ class QuizApp {
                 throw error;
             }
         });
+        electron_1.ipcMain.handle("quiz:has-submitted-attempt", async (_, userId, subjectId) => {
+            try {
+                return await this.dbService.hasSubmittedAttempt(userId, subjectId);
+            }
+            catch (error) {
+                console.error("Check submitted attempt error:", error);
+                throw error;
+            }
+        });
         electron_1.ipcMain.handle("quiz:create-attempt", async (_, attemptData) => {
             try {
                 return await this.dbService.createQuizAttempt(attemptData);
@@ -1135,7 +1144,9 @@ class QuizApp {
             if (error.message.includes("ECONNRESET") ||
                 error.message.includes("Connection terminated") ||
                 error.message.includes("ENOTFOUND") ||
-                error.message.includes("ETIMEDOUT")) {
+                error.message.includes("ETIMEDOUT") ||
+                error.message.includes("Connection terminated unexpectedly") ||
+                error.message.includes("connect ECONNREFUSED")) {
                 console.log("Network error handled gracefully, continuing...");
                 return;
             }
@@ -1152,11 +1163,12 @@ class QuizApp {
             if (reasonStr.includes("ECONNRESET") ||
                 reasonStr.includes("Connection terminated") ||
                 reasonStr.includes("ENOTFOUND") ||
-                reasonStr.includes("ETIMEDOUT")) {
+                reasonStr.includes("ETIMEDOUT") ||
+                reasonStr.includes("Connection terminated unexpectedly") ||
+                reasonStr.includes("connect ECONNREFUSED")) {
                 console.log("Network promise rejection handled gracefully");
                 return;
             }
-            // Log other rejections but don't crash the app
             console.warn("Promise rejection handled, continuing operation...");
         });
         // Handle window creation on macOS

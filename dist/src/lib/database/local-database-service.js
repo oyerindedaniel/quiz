@@ -146,6 +146,15 @@ class LocalDatabaseService {
             .limit(1);
         return attempts[0] || null;
     }
+    async hasSubmittedAttempt(userId, subjectId) {
+        const db = this.getDb();
+        const attempts = await db
+            .select()
+            .from(local_schema_js_1.localSchema.quizAttempts)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.quizAttempts.userId, userId), (0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.quizAttempts.subjectId, subjectId), (0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.quizAttempts.submitted, true)))
+            .limit(1);
+        return attempts.length > 0;
+    }
     async createQuizAttempt(attemptData) {
         const db = this.getDb();
         const now = new Date().toISOString();
@@ -184,10 +193,10 @@ class LocalDatabaseService {
             .set({
             answers: JSON.stringify(currentAnswers),
             updatedAt: new Date().toISOString(),
+            synced: false,
+            syncAttemptedAt: null,
         })
-            .where((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.quizAttempts.id, attemptId))
-            .returning();
-        console.log({ updatedAttempt });
+            .where((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.quizAttempts.id, attemptId));
     }
     async submitQuizAttempt(attemptId, score, sessionDuration) {
         const db = this.getDb();
@@ -219,7 +228,7 @@ class LocalDatabaseService {
         return db
             .select()
             .from(local_schema_js_1.localSchema.questions)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.subjectId, subjectId), (0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.isActive, true)))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.subjectId, subjectId), (0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.isActive, true), (0, drizzle_orm_1.sql) `${local_schema_js_1.localSchema.questions.text} NOT LIKE '[PASSAGE]%'`, (0, drizzle_orm_1.sql) `${local_schema_js_1.localSchema.questions.text} NOT LIKE '[HEADER]%'`, (0, drizzle_orm_1.sql) `${local_schema_js_1.localSchema.questions.text} NOT LIKE '[IMAGE]%'`))
             .orderBy(local_schema_js_1.localSchema.questions.questionOrder);
     }
     async createQuestion(questionData) {
@@ -239,7 +248,7 @@ class LocalDatabaseService {
         const questionCount = await db
             .select({ count: (0, drizzle_orm_1.sql) `count(*)` })
             .from(local_schema_js_1.localSchema.questions)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.subjectCode, subjectCode), (0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.isActive, true), (0, drizzle_orm_1.sql) `${local_schema_js_1.localSchema.questions.text} NOT LIKE '[PASSAGE]%'`, (0, drizzle_orm_1.sql) `${local_schema_js_1.localSchema.questions.text} NOT LIKE '[HEADER]%'`));
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.subjectCode, subjectCode), (0, drizzle_orm_1.eq)(local_schema_js_1.localSchema.questions.isActive, true), (0, drizzle_orm_1.sql) `${local_schema_js_1.localSchema.questions.text} NOT LIKE '[PASSAGE]%'`, (0, drizzle_orm_1.sql) `${local_schema_js_1.localSchema.questions.text} NOT LIKE '[HEADER]%'`, (0, drizzle_orm_1.sql) `${local_schema_js_1.localSchema.questions.text} NOT LIKE '[IMAGE]%'`));
         const count = questionCount[0]?.count || 0;
         await db
             .update(local_schema_js_1.localSchema.subjects)
@@ -569,11 +578,9 @@ class LocalDatabaseService {
                 };
             }
             let totalSynced = 0;
-            // Try to get remote database instance and pull data
             let remoteDb = null;
             let remoteConnected = false;
             try {
-                // Check if we have the required environment variables
                 if (process.env.NEON_DATABASE_URL) {
                     remoteDb = remote_database_service_js_1.RemoteDatabaseService.getInstance();
                     await remoteDb.initialize(process.env.NEON_DATABASE_URL);
@@ -583,7 +590,6 @@ class LocalDatabaseService {
             catch (error) {
                 console.warn("LocalDatabaseService: Remote database unavailable:", error instanceof Error ? error.message : "Unknown error");
             }
-            // If remote is available, try to pull data from it
             if (remoteConnected && remoteDb) {
                 try {
                     console.log("LocalDatabaseService: Remote connected, performing remote data pull");
@@ -672,7 +678,6 @@ class LocalDatabaseService {
             else {
                 console.log("LocalDatabaseService: Remote database not available, using local seeding");
             }
-            // Fallback to auto-seeding (same as pullFreshData)
             console.log("LocalDatabaseService: Performing automatic local database seeding...");
             if (!(0, lib_js_1.isElectron)()) {
                 return {

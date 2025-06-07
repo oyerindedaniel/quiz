@@ -4,10 +4,10 @@ import { toast } from "sonner";
 import { IPCDatabaseService } from "@/lib/services/ipc-database-service";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
+const dbService = new IPCDatabaseService();
+
 // Note: This is a manual sync button for the initial sync of the local database if localDB is empty
 export default function ManualSync() {
-  const dbService = new IPCDatabaseService();
-
   const handleSyncLocalDB = async () => {
     if (!isElectron()) {
       toast.success("This application requires Electron to run");
