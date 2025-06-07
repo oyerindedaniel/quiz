@@ -120,7 +120,7 @@ class UserSeedingService {
         });
     }
     async createSubjectsData() {
-        const { ALL_SUBJECTS } = await Promise.resolve().then(() => __importStar(require("../constants/students")));
+        const { ALL_SUBJECTS } = await Promise.resolve().then(() => __importStar(require("../constants/students.js")));
         const result = {
             created: 0,
             existing: 0,

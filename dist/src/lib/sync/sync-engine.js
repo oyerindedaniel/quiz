@@ -292,6 +292,7 @@ class SyncEngine {
             pushedRecords += pushResult.pushedRecords || 0;
             // Then pull fresh data if local database is empty or outdated
             const pullResult = await this.pullFreshData();
+            console.log("pullResult", pullResult);
             pulledRecords += pullResult.pulledRecords || 0;
             return {
                 success: true,
@@ -414,18 +415,10 @@ class SyncEngine {
                         elapsedTime: rawAttempt.elapsed_time,
                         lastActiveAt: rawAttempt.last_active_at,
                     };
-                    // await this.remoteDb.syncQuizAttempt(attempt);
-                    // await this.localDb.runRawSQL(
-                    //   "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ?, sync_error = NULL WHERE id = ?",
-                    //   [new Date().toISOString(), attempt.id]
-                    // );
+                    await this.remoteDb.syncQuizAttempt(attempt);
+                    await this.localDb.runRawSQL("UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ?, sync_error = NULL WHERE id = ?", [new Date().toISOString(), attempt.id]);
                     pushedRecords++;
-                    // await this.logSyncOperation(
-                    //   "push",
-                    //   "quiz_attempts",
-                    //   attempt.id,
-                    //   "success"
-                    // );
+                    await this.logSyncOperation("push", "quiz_attempts", attempt.id, "success");
                 }
                 catch (error) {
                     await this.logSyncOperation("push", "quiz_attempts", rawAttempt.id, "failed", (0, err_js_1.normalizeError)(error));
@@ -476,19 +469,11 @@ class SyncEngine {
                             lastActiveAt: rawAttempt.last_active_at,
                         };
                         console.log("did transform");
-                        // await this.remoteDb.syncQuizAttempt(attempt);
-                        // await this.localDb.runRawSQL(
-                        //   "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ? WHERE id = ?",
-                        //   [new Date().toISOString(), attempt.id]
-                        // );
+                        await this.remoteDb.syncQuizAttempt(attempt);
+                        await this.localDb.runRawSQL("UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ? WHERE id = ?", [new Date().toISOString(), attempt.id]);
                         console.log("did sync");
                         pushedRecords++;
-                        // await this.logSyncOperation(
-                        //   "push",
-                        //   "quiz_attempts",
-                        //   attempt.id,
-                        //   "success"
-                        // );
+                        await this.logSyncOperation("push", "quiz_attempts", attempt.id, "success");
                     }
                     catch (error) {
                         await this.logSyncOperation("push", "quiz_attempts", rawAttempt.id, "failed", (0, err_js_1.normalizeError)(error));
@@ -526,6 +511,8 @@ class SyncEngine {
             const subjectCount = await this.localDb.executeRawSQL("SELECT COUNT(*) as count FROM subjects");
             const hasUsers = userCount[0]?.count > 0;
             const hasSubjects = subjectCount[0]?.count > 0;
+            console.log("hasUsers", hasUsers);
+            console.log("hasSubjects", hasSubjects);
             if (hasUsers && hasSubjects) {
                 console.log("SyncEngine: Local database already populated, skipping initial data pull");
                 return {
@@ -613,6 +600,9 @@ class SyncEngine {
                             }
                         }
                         console.log(`SyncEngine: Successfully pulled ${pulledRecords} fresh records from remote`);
+                        console.log("************************************************************");
+                        console.log("SyncEngine: Skipping remote data pull");
+                        console.log("************************************************************");
                         return {
                             success: true,
                             pulledRecords,

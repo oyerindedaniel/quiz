@@ -39,6 +39,8 @@ const sqlite_js_1 = require("./sqlite.js");
 const local_schema_js_1 = require("./local-schema.js");
 const lib_js_1 = require("../../utils/lib.js");
 const electron_1 = require("electron");
+const remote_database_service_js_1 = require("./remote-database-service.js");
+const auto_seeding_service_js_1 = require("../seeding/auto-seeding-service.js");
 class LocalDatabaseService {
     constructor() {
         this.db = null;
@@ -524,6 +526,7 @@ class LocalDatabaseService {
      */
     getDbPath() {
         const userDataPath = electron_1.app.getPath("userData");
+        console.log("userDataPath", userDataPath);
         return `${userDataPath}/quiz_app.db`;
     }
     /**
@@ -543,6 +546,176 @@ class LocalDatabaseService {
         catch (error) {
             console.error("LocalDatabaseService: Cleanup failed:", error);
             throw error;
+        }
+    }
+    /**
+     * Sync local database from remote - follows the same pattern as pullFreshData in sync-engine.ts
+     * Only syncs if local database is empty, tries remote first, falls back to auto-seeding
+     */
+    async syncLocalDBFromRemote() {
+        try {
+            console.log("LocalDatabaseService: Starting syncLocalDBFromRemote");
+            const userCount = await this.executeRawSQL("SELECT COUNT(*) as count FROM users");
+            const subjectCount = await this.executeRawSQL("SELECT COUNT(*) as count FROM subjects");
+            const hasUsers = userCount[0]?.count > 0;
+            const hasSubjects = subjectCount[0]?.count > 0;
+            if (hasUsers && hasSubjects) {
+                console.log("LocalDatabaseService: Local database already populated, skipping sync");
+                return {
+                    success: false,
+                    message: "Local database is not empty. Sync skipped.",
+                    error: "Database already contains data",
+                    totalSynced: 0,
+                };
+            }
+            let totalSynced = 0;
+            // Try to get remote database instance and pull data
+            let remoteDb = null;
+            let remoteConnected = false;
+            try {
+                // Check if we have the required environment variables
+                if (process.env.NEON_DATABASE_URL) {
+                    remoteDb = remote_database_service_js_1.RemoteDatabaseService.getInstance();
+                    await remoteDb.initialize(process.env.NEON_DATABASE_URL);
+                    remoteConnected = await remoteDb.checkConnection();
+                }
+            }
+            catch (error) {
+                console.warn("LocalDatabaseService: Remote database unavailable:", error instanceof Error ? error.message : "Unknown error");
+            }
+            // If remote is available, try to pull data from it
+            if (remoteConnected && remoteDb) {
+                try {
+                    console.log("LocalDatabaseService: Remote connected, performing remote data pull");
+                    const syncData = await remoteDb.pullLatestData();
+                    console.log(`LocalDatabaseService: Retrieved ${syncData.users.length} users, ${syncData.subjects.length} subjects, ${syncData.questions.length} questions from remote`);
+                    // Insert users
+                    for (const user of syncData.users) {
+                        try {
+                            const localUser = {
+                                id: user.id,
+                                name: user.name,
+                                studentCode: user.studentCode,
+                                passwordHash: user.passwordHash,
+                                class: user.class,
+                                gender: user.gender,
+                                createdAt: user.createdAt.toISOString(),
+                                updatedAt: user.updatedAt.toISOString(),
+                                lastSynced: new Date().toISOString(),
+                                isActive: user.isActive,
+                                lastLogin: user.lastLogin?.toISOString() || null,
+                            };
+                            await this.createUser(localUser);
+                            totalSynced++;
+                        }
+                        catch (error) {
+                            console.warn("LocalDatabaseService: Failed to create user:", user.studentCode, error);
+                        }
+                    }
+                    // Insert subjects
+                    for (const subject of syncData.subjects) {
+                        try {
+                            const localSubject = {
+                                id: subject.id,
+                                name: subject.name,
+                                subjectCode: subject.subjectCode,
+                                description: subject.description,
+                                class: subject.class,
+                                totalQuestions: subject.totalQuestions,
+                                createdAt: subject.createdAt.toISOString(),
+                                updatedAt: subject.updatedAt.toISOString(),
+                                isActive: subject.isActive,
+                            };
+                            await this.createSubject(localSubject);
+                            totalSynced++;
+                        }
+                        catch (error) {
+                            console.warn("LocalDatabaseService: Failed to create subject:", subject.subjectCode, error);
+                        }
+                    }
+                    // Insert questions
+                    for (const question of syncData.questions) {
+                        try {
+                            const localQuestion = {
+                                id: question.id,
+                                subjectId: question.subjectId,
+                                subjectCode: question.subjectCode,
+                                text: question.text,
+                                options: typeof question.options === "string"
+                                    ? question.options
+                                    : JSON.stringify(question.options),
+                                answer: question.answer,
+                                questionOrder: question.questionOrder,
+                                createdAt: question.createdAt.toISOString(),
+                                updatedAt: question.updatedAt.toISOString(),
+                                explanation: question.explanation,
+                                isActive: question.isActive,
+                            };
+                            await this.createQuestion(localQuestion);
+                            totalSynced++;
+                        }
+                        catch (error) {
+                            console.warn("LocalDatabaseService: Failed to create question:", question.id, error);
+                        }
+                    }
+                    console.log(`LocalDatabaseService: Successfully synced ${totalSynced} records from remote`);
+                    return {
+                        success: true,
+                        message: "Local database synchronized successfully from remote",
+                        totalSynced,
+                    };
+                }
+                catch (remoteError) {
+                    console.error("LocalDatabaseService: Remote data pull failed, falling back to local seeding:", remoteError);
+                }
+            }
+            else {
+                console.log("LocalDatabaseService: Remote database not available, using local seeding");
+            }
+            // Fallback to auto-seeding (same as pullFreshData)
+            console.log("LocalDatabaseService: Performing automatic local database seeding...");
+            if (!(0, lib_js_1.isElectron)()) {
+                return {
+                    success: false,
+                    error: "Local seeding requires Electron environment",
+                    totalSynced: 0,
+                };
+            }
+            try {
+                const seedResult = await auto_seeding_service_js_1.AutoSeedingService.performAutoSeeding();
+                if (seedResult.success) {
+                    console.log(`LocalDatabaseService: Successfully seeded ${seedResult.totalRecords} records locally`);
+                    return {
+                        success: true,
+                        message: "Local database populated using local seeding (offline mode)",
+                        totalSynced: seedResult.totalRecords,
+                    };
+                }
+                else {
+                    console.error("LocalDatabaseService: Local seeding failed:", seedResult.error);
+                    return {
+                        success: false,
+                        error: `Local seeding failed: ${seedResult.error}`,
+                        totalSynced: 0,
+                    };
+                }
+            }
+            catch (seedError) {
+                console.error("LocalDatabaseService: Local seeding failed:", seedError);
+                return {
+                    success: false,
+                    error: `Local seeding failed: ${seedError instanceof Error ? seedError.message : "Unknown error"}`,
+                    totalSynced: 0,
+                };
+            }
+        }
+        catch (error) {
+            console.error("LocalDatabaseService: syncLocalDBFromRemote failed:", error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown sync error",
+                totalSynced: 0,
+            };
         }
     }
 }

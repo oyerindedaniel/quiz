@@ -5,6 +5,7 @@ import { LoginForm } from "@/components/auth/login-form";
 import { AdminLoginModal } from "@/components/auth/admin-login-modal";
 import { Button } from "@/components/ui/button";
 import QuestionSync from "@/components/sync/question-sync";
+import ManualSync from "@/components/sync/manual-sync";
 import { toast } from "sonner";
 
 export default function HomePage() {
@@ -31,9 +32,10 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-50 to-brand-100 flex flex-col items-center justify-center p-4">
-      <div className="fixed top-4 right-4 z-10">
+      <div className="fixed top-4 right-4 z-10 flex items-center gap-2">
+        <ManualSync />
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           onClick={() => setShowSyncPanel(!showSyncPanel)}
           className="bg-white/90 backdrop-blur-sm border-gray-200 hover:bg-gray-50 text-gray-700 font-sans"

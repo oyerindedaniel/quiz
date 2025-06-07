@@ -24,7 +24,7 @@
     "db:studio:neon": "drizzle-kit studio --config=drizzle.config.neon.ts",
     "db:push:neon": "drizzle-kit push --config=drizzle.config.neon.ts",
     "db:drop:neon": "drizzle-kit drop --config=drizzle.config.neon.ts",
-    "db:drop:sqlite": "rimraf quiz_app.db quiz_app.db-shm quiz_app.db-wal && tsx scripts/clean-localdb.ts",
+    "db:drop:sqlite": "tsx scripts/clean-localdb.ts",
     "electron:rebuild": "tsx scripts/rebuild-electron.ts",
     "postinstall": "electron-builder install-app-deps",
     "electron:dev": "cross-env NODE_ENV=development pnpm run electron:compile && concurrently \"cross-env NODE_ENV=development pnpm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development pnpm exec electron dist/electron/main.js\"",

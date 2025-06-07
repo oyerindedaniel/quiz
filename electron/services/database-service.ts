@@ -27,6 +27,7 @@ import type {
   AdminCreationResult,
   SyncOperationType,
   UserSeedData,
+  SyncResult,
 } from "../../src/types/app.js";
 import type { SyncTrigger } from "../../src/lib/sync/sync-engine.js";
 
@@ -627,19 +628,7 @@ export class MainDatabaseService {
   async syncQuestions(options?: {
     replaceExisting?: boolean; // If true, completely replace local questions for each subject
     subjectCodes?: string[]; // If provided, only sync specific subjects
-  }): Promise<{
-    success: boolean;
-    questionsPulled?: number;
-    subjectsSynced?: number;
-    error?: string;
-    details?: {
-      newSubjects: number;
-      updatedQuestions: number;
-      newQuestions: number;
-      skippedQuestions: number;
-      replacedSubjects: number;
-    };
-  }> {
+  }): Promise<SyncResult> {
     const replaceExisting = options?.replaceExisting || false;
     const targetSubjectCodes = options?.subjectCodes;
 
@@ -1029,36 +1018,57 @@ export class MainDatabaseService {
     newPin: string
   ): Promise<{ success: boolean; error?: string; updated?: boolean }> {
     try {
-      const localResult = await this.localDb.changeUserPin(studentCode, newPin);
-
-      if (!localResult.success) {
-        return localResult;
+      if (!this.remoteDb) {
+        throw new Error("Remote database service unavailable");
       }
 
-      if (this.remoteDb && this.isRemoteAvailable()) {
-        try {
-          const remoteResult = await this.remoteDb.changeUserPin(
-            studentCode,
-            newPin
-          );
-          console.log(
-            `MainDatabaseService: Synced change user PIN (${studentCode}) to remote database`
-          );
-        } catch (error) {
-          console.warn(
-            `MainDatabaseService: Failed to sync change user PIN to remote:`,
-            error
-          );
-        }
-      }
+      const hashedPin = await bcrypt.hash(newPin, 10);
 
-      return localResult;
+      const result = await this.remoteDb.changeUserPin(studentCode, hashedPin);
+
+      return result;
     } catch (error) {
-      console.error("MainDatabaseService: Error changing user PIN:", error);
+      console.error("Change user PIN error:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error:
+          error instanceof Error ? error.message : "Failed to change user PIN",
       };
     }
+  }
+
+  /**
+   * Check if local database is empty (no subjects or questions)
+   */
+  async isLocalDBEmpty(): Promise<boolean> {
+    try {
+      const subjects = await this.localDb.executeRawSQL(
+        "SELECT COUNT(*) as count FROM subjects"
+      );
+      const subjectCount = (subjects[0] as { count: number })?.count || 0;
+
+      const questions = await this.localDb.executeRawSQL(
+        "SELECT COUNT(*) as count FROM questions"
+      );
+      const questionCount = (questions[0] as { count: number })?.count || 0;
+
+      return subjectCount === 0 && questionCount === 0;
+    } catch (error) {
+      console.error("Check if local DB is empty error:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Sync local database from remote
+   * Follows the same pattern as pullFreshData in sync-engine.ts
+   */
+  async syncLocalDBFromRemote(): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    totalSynced?: number;
+  }> {
+    return this.localDb.syncLocalDBFromRemote();
   }
 }

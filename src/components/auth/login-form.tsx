@@ -286,7 +286,7 @@ export function LoginForm({ onSuccess, onError }: LoginFormProps) {
                   handleInputChange("timeLimit", timeLimit)
                 }
                 disabled={loading}
-                className="bg-brand-50 border-brand-200 focus:border-brand-500 focus:ring-brand-200"
+                className="border-brand-200 focus:border-brand-500 focus:ring-brand-200"
               />
               <div className="text-xs text-brand-500 font-sans">
                 Current setting:{" "}

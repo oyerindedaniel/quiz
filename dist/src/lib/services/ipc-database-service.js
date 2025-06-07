@@ -222,5 +222,19 @@ class IPCDatabaseService {
         this.checkElectronAPI();
         return window.electronAPI.admin.changeUserPin(studentCode, newPin);
     }
+    /**
+     * Sync local database from remote (only if local DB is empty)
+     */
+    async syncLocalDB() {
+        this.checkElectronAPI();
+        return window.electronAPI.sync.syncLocalDB();
+    }
+    /**
+     * Check if local database is empty
+     */
+    async isLocalDBEmpty() {
+        this.checkElectronAPI();
+        return window.electronAPI.sync.isLocalDBEmpty();
+    }
 }
 exports.IPCDatabaseService = IPCDatabaseService;

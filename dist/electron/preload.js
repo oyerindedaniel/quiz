@@ -46,6 +46,8 @@ const electronAPI = {
         getStatus: () => electron_1.ipcRenderer.invoke("sync:get-status"),
         queueOperation: (operation) => electron_1.ipcRenderer.invoke("sync:queue-operation", operation),
         syncQuestions: (options) => electron_1.ipcRenderer.invoke("sync:sync-questions", options),
+        syncLocalDB: () => electron_1.ipcRenderer.invoke("sync:sync-local-db"),
+        isLocalDBEmpty: () => electron_1.ipcRenderer.invoke("sync:is-local-db-empty"),
     },
     // Seed operations (secure)
     seed: {

@@ -21,6 +21,7 @@ import type {
   QuestionWithStats,
   AnalyticsData,
   UserSeedData,
+  SyncResult,
 } from "../../types/app.js";
 import type { RemoteAdmin } from "../database/remote-schema.js";
 
@@ -312,19 +313,7 @@ export class IPCDatabaseService {
   async syncQuestions(options?: {
     replaceExisting?: boolean;
     subjectCodes?: string[];
-  }): Promise<{
-    success: boolean;
-    questionsPulled?: number;
-    subjectsSynced?: number;
-    error?: string;
-    details?: {
-      newSubjects: number;
-      updatedQuestions: number;
-      newQuestions: number;
-      skippedQuestions: number;
-      replacedSubjects: number;
-    };
-  }> {
+  }): Promise<SyncResult> {
     this.checkElectronAPI();
     return window.electronAPI.sync.syncQuestions(options);
   }
@@ -381,5 +370,26 @@ export class IPCDatabaseService {
   ): Promise<{ success: boolean; error?: string; updated?: boolean }> {
     this.checkElectronAPI();
     return window.electronAPI.admin.changeUserPin(studentCode, newPin);
+  }
+
+  /**
+   * Sync local database from remote (only if local DB is empty)
+   */
+  async syncLocalDB(): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    totalSynced?: number;
+  }> {
+    this.checkElectronAPI();
+    return window.electronAPI.sync.syncLocalDB();
+  }
+
+  /**
+   * Check if local database is empty
+   */
+  async isLocalDBEmpty(): Promise<boolean> {
+    this.checkElectronAPI();
+    return window.electronAPI.sync.isLocalDBEmpty();
   }
 }

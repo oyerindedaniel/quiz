@@ -744,28 +744,43 @@ class MainDatabaseService {
      */
     async changeUserPin(studentCode, newPin) {
         try {
-            const localResult = await this.localDb.changeUserPin(studentCode, newPin);
-            if (!localResult.success) {
-                return localResult;
+            if (!this.remoteDb) {
+                throw new Error("Remote database service unavailable");
             }
-            if (this.remoteDb && this.isRemoteAvailable()) {
-                try {
-                    const remoteResult = await this.remoteDb.changeUserPin(studentCode, newPin);
-                    console.log(`MainDatabaseService: Synced change user PIN (${studentCode}) to remote database`);
-                }
-                catch (error) {
-                    console.warn(`MainDatabaseService: Failed to sync change user PIN to remote:`, error);
-                }
-            }
-            return localResult;
+            const hashedPin = await bcryptjs_1.default.hash(newPin, 10);
+            const result = await this.remoteDb.changeUserPin(studentCode, hashedPin);
+            return result;
         }
         catch (error) {
-            console.error("MainDatabaseService: Error changing user PIN:", error);
+            console.error("Change user PIN error:", error);
             return {
                 success: false,
-                error: error instanceof Error ? error.message : "Unknown error",
+                error: error instanceof Error ? error.message : "Failed to change user PIN",
             };
         }
+    }
+    /**
+     * Check if local database is empty (no subjects or questions)
+     */
+    async isLocalDBEmpty() {
+        try {
+            const subjects = await this.localDb.executeRawSQL("SELECT COUNT(*) as count FROM subjects");
+            const subjectCount = subjects[0]?.count || 0;
+            const questions = await this.localDb.executeRawSQL("SELECT COUNT(*) as count FROM questions");
+            const questionCount = questions[0]?.count || 0;
+            return subjectCount === 0 && questionCount === 0;
+        }
+        catch (error) {
+            console.error("Check if local DB is empty error:", error);
+            return false;
+        }
+    }
+    /**
+     * Sync local database from remote
+     * Follows the same pattern as pullFreshData in sync-engine.ts
+     */
+    async syncLocalDBFromRemote() {
+        return this.localDb.syncLocalDBFromRemote();
     }
 }
 exports.MainDatabaseService = MainDatabaseService;

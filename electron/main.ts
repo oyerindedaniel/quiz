@@ -772,6 +772,30 @@ class QuizApp {
       }
     );
 
+    // Sync local database (only if empty)
+    ipcMain.handle("sync:sync-local-db", async () => {
+      try {
+        const result = await this.dbService.syncLocalDBFromRemote();
+        return result;
+      } catch (error) {
+        console.error("Sync local DB error:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown sync error",
+        };
+      }
+    });
+
+    // Check if local database is empty
+    ipcMain.handle("sync:is-local-db-empty", async () => {
+      try {
+        return await this.dbService.isLocalDBEmpty();
+      } catch (error) {
+        console.error("Check local DB empty error:", error);
+        return false;
+      }
+    });
+
     // Seed operations
     ipcMain.handle("seed:auto-seeding", async () => {
       try {

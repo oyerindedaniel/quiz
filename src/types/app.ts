@@ -385,19 +385,15 @@ export interface SyncAPI {
   syncQuestions: (options?: {
     replaceExisting?: boolean;
     subjectCodes?: string[];
-  }) => Promise<{
+  }) => Promise<SyncResult>;
+
+  syncLocalDB: () => Promise<{
     success: boolean;
-    questionsPulled?: number;
-    subjectsSynced?: number;
+    message?: string;
     error?: string;
-    details?: {
-      newSubjects: number;
-      updatedQuestions: number;
-      newQuestions: number;
-      skippedQuestions: number;
-      replacedSubjects: number;
-    };
+    totalSynced?: number;
   }>;
+  isLocalDBEmpty: () => Promise<boolean>;
 }
 
 export interface SeedAPI {
@@ -576,6 +572,20 @@ export interface SyncConflict<T = Record<string, unknown>> {
   remoteRecord: T;
   conflictType: "update_conflict" | "delete_conflict";
   timestamp: string;
+}
+
+export interface SyncResult {
+  success: boolean;
+  questionsPulled?: number;
+  subjectsSynced?: number;
+  error?: string;
+  details?: {
+    newSubjects: number;
+    updatedQuestions: number;
+    newQuestions: number;
+    skippedQuestions: number;
+    replacedSubjects: number;
+  };
 }
 
 // Admin Dashboard Types

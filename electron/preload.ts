@@ -8,6 +8,7 @@ import type {
   AdminSessionData,
   CreateAdminData,
 } from "../src/types/app.js";
+import type { SyncTrigger } from "../src/lib/sync/sync-engine.js";
 
 const electronAPI = {
   // Database operations (raw SQL)
@@ -74,7 +75,7 @@ const electronAPI = {
 
   // Sync operations (secure)
   sync: {
-    trigger: (trigger?: "manual" | "startup" | "app_close") =>
+    trigger: (trigger?: SyncTrigger) =>
       ipcRenderer.invoke("sync:trigger", trigger),
     getStatus: () => ipcRenderer.invoke("sync:get-status"),
     queueOperation: <T = Record<string, unknown>>(operation: {
@@ -87,6 +88,8 @@ const electronAPI = {
       replaceExisting?: boolean;
       subjectCodes?: string[];
     }) => ipcRenderer.invoke("sync:sync-questions", options),
+    syncLocalDB: () => ipcRenderer.invoke("sync:sync-local-db"),
+    isLocalDBEmpty: () => ipcRenderer.invoke("sync:is-local-db-empty"),
   },
 
   // Seed operations (secure)

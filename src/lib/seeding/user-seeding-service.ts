@@ -134,7 +134,7 @@ export class UserSeedingService {
     existing: number;
     errors: string[];
   }> {
-    const { ALL_SUBJECTS } = await import("../constants/students");
+    const { ALL_SUBJECTS } = await import("../constants/students.js");
     const result: { created: number; existing: number; errors: string[] } = {
       created: 0,
       existing: 0,

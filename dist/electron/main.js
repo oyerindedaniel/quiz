@@ -150,11 +150,11 @@ class QuizApp {
             const pathname = url.pathname;
             // Try multiple possible static paths for production builds
             const possiblePaths = [
-                (0, path_1.join)(__dirname, "../out"), // Standard Next.js out directory
-                (0, path_1.join)(__dirname, "../../out"), // Alternative path structure
-                (0, path_1.join)(__dirname, "out"), // Direct out folder
-                (0, path_1.join)(process.resourcesPath, "out"), // Resources path in packaged app
-                (0, path_1.join)(electron_1.app.getAppPath(), "out"), // App path
+                (0, path_1.join)(__dirname, "../out"),
+                (0, path_1.join)(__dirname, "../../out"),
+                (0, path_1.join)(__dirname, "out"),
+                (0, path_1.join)(process.resourcesPath, "out"),
+                (0, path_1.join)(electron_1.app.getAppPath(), "out"),
             ];
             let staticPath = "";
             // Find the correct static path
@@ -640,6 +640,30 @@ class QuizApp {
                     success: false,
                     error: error instanceof Error ? error.message : "Unknown sync error",
                 };
+            }
+        });
+        // Sync local database (only if empty)
+        electron_1.ipcMain.handle("sync:sync-local-db", async () => {
+            try {
+                const result = await this.dbService.syncLocalDBFromRemote();
+                return result;
+            }
+            catch (error) {
+                console.error("Sync local DB error:", error);
+                return {
+                    success: false,
+                    error: error instanceof Error ? error.message : "Unknown sync error",
+                };
+            }
+        });
+        // Check if local database is empty
+        electron_1.ipcMain.handle("sync:is-local-db-empty", async () => {
+            try {
+                return await this.dbService.isLocalDBEmpty();
+            }
+            catch (error) {
+                console.error("Check local DB empty error:", error);
+                return false;
             }
         });
         // Seed operations

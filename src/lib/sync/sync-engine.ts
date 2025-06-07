@@ -416,6 +416,7 @@ export class SyncEngine {
 
       // Then pull fresh data if local database is empty or outdated
       const pullResult = await this.pullFreshData();
+      console.log("pullResult", pullResult);
       pulledRecords += pullResult.pulledRecords || 0;
 
       return {
@@ -581,21 +582,21 @@ export class SyncEngine {
             lastActiveAt: rawAttempt.last_active_at,
           };
 
-          // await this.remoteDb.syncQuizAttempt(attempt);
+          await this.remoteDb.syncQuizAttempt(attempt);
 
-          // await this.localDb.runRawSQL(
-          //   "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ?, sync_error = NULL WHERE id = ?",
-          //   [new Date().toISOString(), attempt.id]
-          // );
+          await this.localDb.runRawSQL(
+            "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ?, sync_error = NULL WHERE id = ?",
+            [new Date().toISOString(), attempt.id]
+          );
 
           pushedRecords++;
 
-          // await this.logSyncOperation(
-          //   "push",
-          //   "quiz_attempts",
-          //   attempt.id,
-          //   "success"
-          // );
+          await this.logSyncOperation(
+            "push",
+            "quiz_attempts",
+            attempt.id,
+            "success"
+          );
         } catch (error) {
           await this.logSyncOperation(
             "push",
@@ -667,22 +668,22 @@ export class SyncEngine {
             };
 
             console.log("did transform");
-            // await this.remoteDb.syncQuizAttempt(attempt);
+            await this.remoteDb.syncQuizAttempt(attempt);
 
-            // await this.localDb.runRawSQL(
-            //   "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ? WHERE id = ?",
-            //   [new Date().toISOString(), attempt.id]
-            // );
+            await this.localDb.runRawSQL(
+              "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ? WHERE id = ?",
+              [new Date().toISOString(), attempt.id]
+            );
 
             console.log("did sync");
 
             pushedRecords++;
-            // await this.logSyncOperation(
-            //   "push",
-            //   "quiz_attempts",
-            //   attempt.id,
-            //   "success"
-            // );
+            await this.logSyncOperation(
+              "push",
+              "quiz_attempts",
+              attempt.id,
+              "success"
+            );
           } catch (error) {
             await this.logSyncOperation(
               "push",
@@ -738,6 +739,9 @@ export class SyncEngine {
 
       const hasUsers = (userCount[0] as CountResult)?.count > 0;
       const hasSubjects = (subjectCount[0] as CountResult)?.count > 0;
+
+      console.log("hasUsers", hasUsers);
+      console.log("hasSubjects", hasSubjects);
 
       if (hasUsers && hasSubjects) {
         console.log(
@@ -844,6 +848,13 @@ export class SyncEngine {
 
             console.log(
               `SyncEngine: Successfully pulled ${pulledRecords} fresh records from remote`
+            );
+            console.log(
+              "************************************************************"
+            );
+            console.log("SyncEngine: Skipping remote data pull");
+            console.log(
+              "************************************************************"
             );
             return {
               success: true,
