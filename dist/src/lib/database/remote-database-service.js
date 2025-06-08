@@ -225,8 +225,25 @@ class RemoteDatabaseService {
         return db
             .select()
             .from(remote_schema_js_1.remoteSchema.questions)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.subjectId, subjectId), (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.isActive, true), (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[PASSAGE]%'`, (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[HEADER]%'`, (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[IMAGE]%'`))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.subjectId, subjectId), (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.isActive, true)))
             .orderBy(remote_schema_js_1.remoteSchema.questions.questionOrder);
+    }
+    async getProcessedQuestionsForSubject(subjectId) {
+        const db = this.getDb();
+        const questionItems = await db
+            .select()
+            .from(remote_schema_js_1.remoteSchema.questions)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.subjectId, subjectId), (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.isActive, true)))
+            .orderBy(remote_schema_js_1.remoteSchema.questions.questionOrder);
+        const answerableQuestions = await db
+            .select()
+            .from(remote_schema_js_1.remoteSchema.questions)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.subjectId, subjectId), (0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.questions.isActive, true), (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[PASSAGE]%'`, (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[HEADER]%'`, (0, drizzle_orm_1.sql) `${remote_schema_js_1.remoteSchema.questions.text} NOT LIKE '[IMAGE]%'`));
+        return {
+            questionItems,
+            actualQuestions: answerableQuestions,
+            totalQuestions: answerableQuestions.length,
+        };
     }
     async createQuestion(questionData) {
         const db = this.getDb();
@@ -281,7 +298,7 @@ class RemoteDatabaseService {
      */
     async updateSubjectQuestionCount(subjectCode) {
         const db = this.getDb();
-        // Only count answerable questions (not passages and headers)
+        // Only count answerable questions (not passages, headers and images)
         const questionCount = await db
             .select()
             .from(remote_schema_js_1.remoteSchema.questions)
@@ -1150,21 +1167,54 @@ class RemoteDatabaseService {
             };
         }
     }
-    //TODO: Possible circular dependency
     /**
-     * Get student credentials
+     * Get student credentials - includes both seeded and remotely created students
      */
     async getStudentCredentials() {
         try {
-            const { ALL_STUDENTS } = await Promise.resolve().then(() => __importStar(require("../constants/students.js")));
-            return ALL_STUDENTS.map((student, index) => {
-                const pin = String(100000 + (index + 1)).padStart(6, "1");
+            const db = this.getDb();
+            const allUsers = await db
+                .select({
+                id: remote_schema_js_1.remoteSchema.users.id,
+                name: remote_schema_js_1.remoteSchema.users.name,
+                studentCode: remote_schema_js_1.remoteSchema.users.studentCode,
+                passwordHash: remote_schema_js_1.remoteSchema.users.passwordHash,
+                class: remote_schema_js_1.remoteSchema.users.class,
+                gender: remote_schema_js_1.remoteSchema.users.gender,
+                createdAt: remote_schema_js_1.remoteSchema.users.createdAt,
+            })
+                .from(remote_schema_js_1.remoteSchema.users)
+                .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.users.isActive, true))
+                .orderBy(remote_schema_js_1.remoteSchema.users.studentCode);
+            let seededStudentCodes = new Set();
+            let seededStudentsMap = new Map();
+            try {
+                const { ALL_STUDENTS } = await Promise.resolve().then(() => __importStar(require("../constants/students.js")));
+                seededStudentCodes = new Set(ALL_STUDENTS.map((s) => s.studentCode));
+                ALL_STUDENTS.forEach((s, index) => {
+                    const pin = s.pin || String(100000 + (index + 1)).padStart(6, "1");
+                    seededStudentsMap.set(s.studentCode, pin);
+                });
+            }
+            catch (error) {
+                console.warn("Could not load seeded students constants:", error);
+            }
+            return allUsers.map((user) => {
+                const isSeededStudent = seededStudentCodes.has(user.studentCode);
+                let pin;
+                if (isSeededStudent) {
+                    pin =
+                        seededStudentsMap.get(user.studentCode) || "[HIDDEN - Remote User]";
+                }
+                else {
+                    pin = "[HIDDEN - Remote User]";
+                }
                 return {
-                    name: student.name,
-                    studentCode: student.studentCode,
+                    name: user.name,
+                    studentCode: user.studentCode,
                     pin: pin,
-                    class: student.class,
-                    gender: student.gender,
+                    class: user.class,
+                    gender: user.gender,
                 };
             });
         }

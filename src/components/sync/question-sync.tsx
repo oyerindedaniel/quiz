@@ -92,7 +92,7 @@ export default function QuestionSync() {
           Question Sync
         </h3>
         <p className="text-sm text-brand-600 font-sans">
-          Sync questions from remote database to local storage with advanced
+          Sync questions from remote database to local database with advanced
           options
         </p>
       </div>

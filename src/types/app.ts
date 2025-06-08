@@ -43,6 +43,7 @@ import type {
   Gender,
   Class,
   AdminRole,
+  RemoteQuestion,
 } from "@/lib/database/remote-schema";
 import { SyncTrigger } from "@/lib/sync/sync-engine";
 
@@ -327,6 +328,7 @@ export interface DatabaseAPI {
 // Quiz API Types
 export interface QuizAPI {
   getQuestions: (subjectId: string) => Promise<Question[]>;
+  getProcessedQuestions: (subjectId: string) => Promise<LocalProcessedQuestion>;
   findIncompleteAttempt: (
     userId: string,
     subjectId: string
@@ -539,17 +541,23 @@ export interface QuestionItem {
   imagePosition?: ImagePosition;
 }
 
-export interface ProcessedQuizData {
-  questionItems: QuestionItem[];
-  actualQuestions: QuestionItem[]; // Only questions that can be answered
-  totalQuestions: number; // Count of answerable questions
+// For in app question processing
+export interface ProcessedQuestionSet<T> {
+  questionItems: T[];
+  actualQuestions: T[];
+  totalQuestions: number;
 }
+
+export type ProcessedQuizData = ProcessedQuestionSet<QuestionItem>;
+export type LocalProcessedQuestion = ProcessedQuestionSet<Question>;
+export type RemoteProcessedQuestion = ProcessedQuestionSet<RemoteQuestion>;
 
 // Quiz Flow Types
 export interface QuizSession {
   attemptId: string;
   questions: Question[];
   currentQuestionIndex: number;
+  totalQuestions?: number;
   answers: Record<string, string>;
   isResume: boolean;
   elapsedTime?: number; // Accumulated time spent in seconds

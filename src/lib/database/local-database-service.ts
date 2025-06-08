@@ -16,6 +16,7 @@ import { isElectron } from "../../utils/lib.js";
 import { app } from "electron";
 import { RemoteDatabaseService } from "./remote-database-service.js";
 import { AutoSeedingService } from "../seeding/auto-seeding-service.js";
+import type { LocalProcessedQuestion } from "../../types/app.js";
 
 interface CountResult {
   count: number;
@@ -320,14 +321,46 @@ export class LocalDatabaseService {
       .where(
         and(
           eq(localSchema.questions.subjectId, subjectId),
-          eq(localSchema.questions.isActive, true),
+          eq(localSchema.questions.isActive, true)
+        )
+      )
+      .orderBy(localSchema.questions.questionOrder);
+  }
 
+  async getProcessedQuestionsForSubject(
+    subjectId: string
+  ): Promise<LocalProcessedQuestion> {
+    const db = this.getDb();
+
+    const questionItems = await db
+      .select()
+      .from(localSchema.questions)
+      .where(
+        and(
+          eq(localSchema.questions.subjectId, subjectId),
+          eq(localSchema.questions.isActive, true)
+        )
+      )
+      .orderBy(localSchema.questions.questionOrder);
+
+    const answerableQuestions = await db
+      .select()
+      .from(localSchema.questions)
+      .where(
+        and(
+          eq(localSchema.questions.subjectId, subjectId),
+          eq(localSchema.questions.isActive, true),
           sql`${localSchema.questions.text} NOT LIKE '[PASSAGE]%'`,
           sql`${localSchema.questions.text} NOT LIKE '[HEADER]%'`,
           sql`${localSchema.questions.text} NOT LIKE '[IMAGE]%'`
         )
-      )
-      .orderBy(localSchema.questions.questionOrder);
+      );
+
+    return {
+      questionItems,
+      actualQuestions: answerableQuestions,
+      totalQuestions: answerableQuestions.length,
+    };
   }
 
   async createQuestion(
@@ -390,44 +423,162 @@ export class LocalDatabaseService {
 
     const db = this.getDb();
     const now = new Date().toISOString();
+    const CHUNK_SIZE = 500;
+    let totalCreated = 0;
 
     try {
-      const result = await db.transaction(async (tx) => {
-        const questionsWithTimestamps = questions.map((questionData) => ({
-          ...questionData,
-          createdAt: now,
-          updatedAt: now,
-        }));
+      const questionsWithTimestamps = questions.map((questionData) => ({
+        ...questionData,
+        createdAt: now,
+        updatedAt: now,
+      }));
 
-        await tx.insert(localSchema.questions).values(questionsWithTimestamps);
+      for (let i = 0; i < questionsWithTimestamps.length; i += CHUNK_SIZE) {
+        const chunk = questionsWithTimestamps.slice(i, i + CHUNK_SIZE);
 
-        return { created: questions.length };
-      });
+        try {
+          const result = db.transaction(() => {
+            db.insert(localSchema.questions).values(chunk).run();
+            return { created: chunk.length };
+          });
 
-      console.log(`Bulk created ${result.created} questions successfully`);
+          totalCreated += result.created;
+
+          console.log(
+            `Bulk created chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${
+              result.created
+            } questions (Total: ${totalCreated}/${questions.length})`
+          );
+        } catch (chunkError) {
+          console.error(
+            `Failed to create chunk starting at index ${i}:`,
+            chunkError
+          );
+          throw chunkError;
+        }
+      }
+
+      console.log(
+        `Bulk created ${totalCreated} questions successfully in ${Math.ceil(
+          questions.length / CHUNK_SIZE
+        )} chunks`
+      );
 
       return {
         success: true,
-        created: result.created,
+        created: totalCreated,
       };
     } catch (error) {
       console.error("Bulk question creation error:", error);
       return {
         success: false,
-        created: 0,
+        created: totalCreated,
         error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
 
   /**
-   * Execute a function within a transaction
+   * Execute a function within a transaction (synchronous for better-sqlite3)
    */
-  async transaction<T>(
-    callback: (tx: BetterSQLite3Database<typeof localSchema>) => Promise<T>
-  ): Promise<T> {
+  transaction<T>(
+    callback: (tx: BetterSQLite3Database<typeof localSchema>) => T
+  ): T {
     const db = this.getDb();
-    return await db.transaction(callback);
+    return db.transaction(callback);
+  }
+
+  /**
+   * Synchronous methods for use within transactions
+   * These are needed for the transaction-based sync operations
+   */
+
+  /**
+   * Synchronous version of deleteQuestionsBySubjectCode for use in transactions
+   */
+  deleteQuestionsBySubjectCodeSync(subjectCode: string): number {
+    const db = this.getDb();
+    const result = db
+      .delete(localSchema.questions)
+      .where(eq(localSchema.questions.subjectCode, subjectCode))
+      .returning({ id: localSchema.questions.id })
+      .run();
+
+    return result.changes;
+  }
+
+  /**
+   * Synchronous version of bulkCreateQuestions for use in transactions
+   */
+  bulkCreateQuestionsSync(
+    questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
+  ): void {
+    if (questions.length === 0) return;
+
+    const db = this.getDb();
+    const now = new Date().toISOString();
+    const CHUNK_SIZE = 500;
+
+    const questionsWithTimestamps = questions.map((q) => ({
+      ...q,
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+    for (let i = 0; i < questionsWithTimestamps.length; i += CHUNK_SIZE) {
+      const chunk = questionsWithTimestamps.slice(i, i + CHUNK_SIZE);
+      db.insert(localSchema.questions).values(chunk).run();
+    }
+  }
+
+  /**
+   * Synchronous version of updateQuestion for use in transactions
+   */
+  updateQuestionSync(
+    questionId: string,
+    questionData: Partial<Omit<NewQuestion, "id" | "createdAt">>
+  ): void {
+    const db = this.getDb();
+    const now = new Date().toISOString();
+
+    const updateData = {
+      ...questionData,
+      updatedAt: now,
+    };
+
+    db.update(localSchema.questions)
+      .set(updateData)
+      .where(eq(localSchema.questions.id, questionId))
+      .run();
+  }
+
+  /**
+   * Synchronous version of updateSubjectQuestionCount for use in transactions
+   */
+  updateSubjectQuestionCountSync(subjectCode: string): void {
+    const db = this.getDb();
+
+    const countResult = db
+      .select({ count: sql<number>`count(*)` })
+      .from(localSchema.questions)
+      .where(
+        and(
+          eq(localSchema.questions.subjectCode, subjectCode),
+          eq(localSchema.questions.isActive, true)
+        )
+      )
+      .get();
+
+    const questionCount = countResult?.count || 0;
+    const now = new Date().toISOString();
+
+    db.update(localSchema.subjects)
+      .set({
+        totalQuestions: questionCount,
+        updatedAt: now,
+      })
+      .where(eq(localSchema.subjects.subjectCode, subjectCode))
+      .run();
   }
 
   async findQuestionBySubjectCodeAndOrder(
@@ -869,6 +1020,8 @@ export class LocalDatabaseService {
                 createdAt: subject.createdAt.toISOString(),
                 updatedAt: subject.updatedAt.toISOString(),
                 isActive: subject.isActive,
+                category: subject.category || null,
+                academicYear: subject.academicYear || null,
               };
 
               await this.createSubject(localSubject);

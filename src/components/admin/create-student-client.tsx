@@ -13,6 +13,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { IPCDatabaseService } from "@/lib/services/ipc-database-service";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
+import { CreateUserSkeleton } from "@/components/skeletons/create-user-skeleton";
 import type { Gender, Class } from "@/lib/database/remote-schema";
 
 interface CreateStudentData {
@@ -28,6 +29,8 @@ export function CreateStudentClient() {
   const [isCreating, setIsCreating] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastCreatedStudent, setLastCreatedStudent] =
+    useState<CreateStudentData | null>(null);
 
   const ipcDb = new IPCDatabaseService();
 
@@ -65,6 +68,7 @@ export function CreateStudentClient() {
       });
 
       setSuccess(true);
+      setLastCreatedStudent(formData); // Store before clearing form
       setFormData({
         name: "",
         studentCode: "",
@@ -82,12 +86,7 @@ export function CreateStudentClient() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div>
-        <span className="ml-3 text-gray-600 font-sans">Loading...</span>
-      </div>
-    );
+    return <CreateUserSkeleton />;
   }
 
   if (!admin) {
@@ -247,6 +246,29 @@ export function CreateStudentClient() {
           )}
         </div>
       </div>
+
+      {lastCreatedStudent && (
+        <div className="mt-4">
+          <h3 className="text-xl font-semibold text-gray-900 font-sans">
+            Last Created Student Details
+          </h3>
+          <p className="text-gray-600 mt-2 font-sans">
+            Name: {lastCreatedStudent.name}
+          </p>
+          <p className="text-gray-600 mt-2 font-sans">
+            Student Code: {lastCreatedStudent.studentCode}
+          </p>
+          <p className="text-gray-600 mt-2 font-sans">
+            PIN: {lastCreatedStudent.pin}
+          </p>
+          <p className="text-gray-600 mt-2 font-sans">
+            Class: {lastCreatedStudent.class}
+          </p>
+          <p className="text-gray-600 mt-2 font-sans">
+            Gender: {lastCreatedStudent.gender}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

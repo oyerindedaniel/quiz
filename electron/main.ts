@@ -475,6 +475,20 @@ class QuizApp {
     });
 
     ipcMain.handle(
+      "quiz:get-processed-questions",
+      async (_, subjectId: string) => {
+        try {
+          return await this.dbService.getProcessedQuestionsForSubject(
+            subjectId
+          );
+        } catch (error) {
+          console.error("Get processed questions error:", error);
+          throw error;
+        }
+      }
+    );
+
+    ipcMain.handle(
       "quiz:find-incomplete-attempt",
       async (_, userId: string, subjectId: string) => {
         try {

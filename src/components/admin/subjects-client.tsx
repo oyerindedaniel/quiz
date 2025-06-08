@@ -17,6 +17,7 @@ import {
 
 import { useAdminData } from "@/hooks/use-admin-data";
 import { useFilteredData } from "@/hooks/use-filtered-data";
+import { SubjectsSkeleton } from "@/components/skeletons/subjects-skeleton";
 import {
   Search,
   RefreshCw,
@@ -33,6 +34,7 @@ export function SubjectsClient() {
   const {
     data: subjects,
     isLoading,
+    isRefetching,
     error,
     refresh,
   } = useAdminData((ipcDb) => ipcDb.getAllSubjects(), {
@@ -117,14 +119,7 @@ export function SubjectsClient() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div>
-        <span className="ml-3 text-gray-600 font-sans">
-          Loading subjects...
-        </span>
-      </div>
-    );
+    return <SubjectsSkeleton />;
   }
 
   return (
@@ -138,7 +133,13 @@ export function SubjectsClient() {
             Manage subjects and view performance metrics
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {isRefetching && (
+            <div className="flex items-center text-brand-600">
+              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+              <span className="text-sm font-sans">Updating...</span>
+            </div>
+          )}
           <Button
             onClick={downloadSubjects}
             variant="outline"
@@ -153,11 +154,13 @@ export function SubjectsClient() {
             onClick={refresh}
             variant="outline"
             size="sm"
-            disabled={isLoading}
+            disabled={isLoading || isRefetching}
             className="font-sans"
           >
             <RefreshCw
-              className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+              className={`w-4 h-4 mr-2 ${
+                isLoading || isRefetching ? "animate-spin" : ""
+              }`}
             />
             Refresh
           </Button>

@@ -25,6 +25,8 @@ const electronAPI = {
   quiz: {
     getQuestions: (subjectId: string) =>
       ipcRenderer.invoke("quiz:get-questions", subjectId),
+    getProcessedQuestions: (subjectId: string) =>
+      ipcRenderer.invoke("quiz:get-processed-questions", subjectId),
     findIncompleteAttempt: (userId: string, subjectId: string) =>
       ipcRenderer.invoke("quiz:find-incomplete-attempt", userId, subjectId),
     hasSubmittedAttempt: (userId: string, subjectId: string) =>

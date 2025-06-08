@@ -420,6 +420,15 @@ class QuizApp {
                 throw error;
             }
         });
+        electron_1.ipcMain.handle("quiz:get-processed-questions", async (_, subjectId) => {
+            try {
+                return await this.dbService.getProcessedQuestionsForSubject(subjectId);
+            }
+            catch (error) {
+                console.error("Get processed questions error:", error);
+                throw error;
+            }
+        });
         electron_1.ipcMain.handle("quiz:find-incomplete-attempt", async (_, userId, subjectId) => {
             try {
                 return await this.dbService.findIncompleteAttempt(userId, subjectId);
@@ -540,6 +549,23 @@ class QuizApp {
                 };
             }
         });
+        electron_1.ipcMain.handle("remote:create-student", async (_, studentData) => {
+            try {
+                const authCheck = await this.validateAdminAuth();
+                if (!authCheck.valid) {
+                    throw new Error("Unauthorized: Admin authentication required");
+                }
+                return await this.dbService.remoteCreateStudent(studentData);
+            }
+            catch (error) {
+                console.error("Remote create student error:", error);
+                if (error instanceof Error &&
+                    error.message.includes("Unauthorized")) {
+                    throw error;
+                }
+                throw error;
+            }
+        });
         // User operations
         electron_1.ipcMain.handle("user:find-by-student-code", async (_, studentCode) => {
             try {
@@ -645,6 +671,18 @@ class QuizApp {
             }
             catch (error) {
                 console.error("Sync questions error:", error);
+                return {
+                    success: false,
+                    error: error instanceof Error ? error.message : "Unknown sync error",
+                };
+            }
+        });
+        electron_1.ipcMain.handle("sync:sync-users", async (_, options) => {
+            try {
+                return await this.dbService.syncUsers(options);
+            }
+            catch (error) {
+                console.error("Sync users error:", error);
                 return {
                     success: false,
                     error: error instanceof Error ? error.message : "Unknown sync error",

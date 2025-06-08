@@ -43,7 +43,7 @@ export class NeonManager {
         max: 3,
         min: 1,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
+        connectionTimeoutMillis: 30000,
         statement_timeout: 60000,
         query_timeout: 60000,
         ssl: {

@@ -299,7 +299,9 @@ export function AdminLayoutWithSidebar({ children }: AdminLayoutProps) {
             </h1>
           </div>
         </header>
-        <div className="flex-1 overflow-auto bg-gray-50 p-6">{children}</div>
+        <div className="flex-1 overflow-hidden w-[calc(100vw-17rem)] bg-gray-50 p-6">
+          {children}
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );

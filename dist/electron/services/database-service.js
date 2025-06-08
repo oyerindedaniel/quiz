@@ -10,6 +10,8 @@ const csv_import_service_js_1 = require("../../src/lib/import/csv-import-service
 const sync_engine_js_1 = require("../../src/lib/sync/sync-engine.js");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const local_schema_js_1 = require("../../src/lib/database/local-schema.js");
+const drizzle_orm_1 = require("drizzle-orm");
 class MainDatabaseService {
     constructor() {
         this.remoteDb = null;
@@ -99,6 +101,9 @@ class MainDatabaseService {
     // Question operations (Local - primary operations)
     async getQuestionsForSubject(subjectId) {
         return this.localDb.getQuestionsForSubject(subjectId);
+    }
+    async getProcessedQuestionsForSubject(subjectId) {
+        return this.localDb.getProcessedQuestionsForSubject(subjectId);
     }
     async createQuestion(questionData) {
         return this.localDb.createQuestion(questionData);
@@ -464,6 +469,31 @@ class MainDatabaseService {
         }
     }
     /**
+     * Create a student directly to remote database
+     */
+    async remoteCreateStudent(studentData) {
+        if (!this.remoteDb || !this.remoteDb.isConnected()) {
+            throw new Error("Remote database not available");
+        }
+        try {
+            const hashedPassword = await bcryptjs_1.default.hash(studentData.passwordHash, 10);
+            const studentDataWithHashedPassword = {
+                ...studentData,
+                passwordHash: hashedPassword,
+            };
+            await this.remoteDb.createUser({
+                ...studentDataWithHashedPassword,
+                lastLogin: null,
+                isActive: true,
+            });
+            console.log(`Remote student created successfully: ${studentData.studentCode}`);
+        }
+        catch (error) {
+            console.error("Remote student creation error:", error);
+            throw new Error(`Failed to create student: ${error instanceof Error ? error.message : "Unknown error"}`);
+        }
+    }
+    /**
      * sync questions from remote database to local database
      */
     async syncQuestions(options) {
@@ -525,6 +555,8 @@ class MainDatabaseService {
                                 subjectCode: remoteSubject.subjectCode,
                                 description: remoteSubject.description || "",
                                 class: remoteSubject.class,
+                                category: remoteSubject.category || null,
+                                academicYear: remoteSubject.academicYear || null,
                             });
                             localSubject = await this.localDb.findSubjectByCode(subjectCode);
                             newSubjectsCreated++;
@@ -541,94 +573,62 @@ class MainDatabaseService {
                         skippedQuestions += subjectQuestions.length;
                         continue;
                     }
-                    await this.localDb.transaction(async (tx) => {
-                        // If replace mode, delete all existing questions for this subject first
-                        if (replaceExisting) {
-                            const deletedCount = await this.localDb.deleteQuestionsBySubjectCode(subjectCode);
-                            console.log(`Deleted ${deletedCount} existing questions for ${subjectCode}`);
-                            replacedSubjects++;
-                        }
-                        const questionsToCreate = [];
-                        const questionsToUpdate = [];
-                        for (const remoteQuestion of subjectQuestions) {
-                            try {
-                                let shouldCreate = true;
-                                if (!replaceExisting) {
-                                    // Check if question exists by subject code and question order
-                                    const existingQuestion = await this.localDb.findQuestionBySubjectCodeAndOrder(remoteQuestion.subjectCode, remoteQuestion.questionOrder);
-                                    if (existingQuestion) {
-                                        questionsToUpdate.push({
-                                            id: existingQuestion.id,
-                                            updates: {
-                                                text: remoteQuestion.text,
-                                                options: JSON.stringify(remoteQuestion.options),
-                                                answer: remoteQuestion.answer,
-                                                explanation: remoteQuestion.explanation || null,
-                                            },
-                                        });
-                                        shouldCreate = false;
-                                    }
-                                }
-                                if (shouldCreate) {
-                                    questionsToCreate.push({
-                                        id: remoteQuestion.id,
-                                        subjectId: localSubject.id,
-                                        subjectCode: remoteQuestion.subjectCode,
-                                        text: remoteQuestion.text,
-                                        options: JSON.stringify(remoteQuestion.options),
-                                        answer: remoteQuestion.answer,
-                                        questionOrder: remoteQuestion.questionOrder,
-                                        explanation: remoteQuestion.explanation || null,
-                                        isActive: true,
+                    const questionsToCreate = [];
+                    const questionsToUpdate = [];
+                    for (const remoteQuestion of subjectQuestions) {
+                        try {
+                            let shouldCreate = true;
+                            if (!replaceExisting) {
+                                const existingQuestion = await this.localDb.findQuestionBySubjectCodeAndOrder(remoteQuestion.subjectCode, remoteQuestion.questionOrder);
+                                if (existingQuestion) {
+                                    questionsToUpdate.push({
+                                        id: existingQuestion.id,
+                                        updates: {
+                                            text: remoteQuestion.text,
+                                            options: JSON.stringify(remoteQuestion.options),
+                                            answer: remoteQuestion.answer,
+                                            explanation: remoteQuestion.explanation || null,
+                                            updatedAt: new Date().toISOString(),
+                                        },
                                     });
+                                    shouldCreate = false;
                                 }
                             }
-                            catch (questionProcessError) {
-                                console.warn(`Error processing question ${remoteQuestion.id}:`, questionProcessError);
-                                skippedQuestions++;
+                            if (shouldCreate) {
+                                questionsToCreate.push({
+                                    id: remoteQuestion.id,
+                                    subjectId: localSubject.id,
+                                    subjectCode: remoteQuestion.subjectCode,
+                                    text: remoteQuestion.text,
+                                    options: JSON.stringify(remoteQuestion.options),
+                                    answer: remoteQuestion.answer,
+                                    questionOrder: remoteQuestion.questionOrder,
+                                    explanation: remoteQuestion.explanation || null,
+                                    isActive: true,
+                                });
                             }
                         }
-                        // Bulk create new questions for this subject
-                        if (questionsToCreate.length > 0) {
-                            try {
-                                const createResult = await this.localDb.bulkCreateQuestions(questionsToCreate);
-                                if (createResult.success) {
-                                    newQuestions += createResult.created;
-                                    console.log(`Bulk created ${createResult.created} questions for ${subjectCode}`);
-                                }
-                                else {
-                                    console.error(`Bulk create failed for ${subjectCode}:`, createResult.error);
-                                    skippedQuestions += questionsToCreate.length;
-                                }
-                            }
-                            catch (bulkCreateError) {
-                                console.error(`Bulk create error for ${subjectCode}:`, bulkCreateError);
-                                skippedQuestions += questionsToCreate.length;
-                            }
+                        catch (questionProcessError) {
+                            console.warn(`Error processing question ${remoteQuestion.id}:`, questionProcessError);
+                            skippedQuestions++;
                         }
-                        // Bulk update existing questions for this subject (only in update mode)
-                        if (!replaceExisting && questionsToUpdate.length > 0) {
-                            try {
-                                for (const { id, updates } of questionsToUpdate) {
-                                    await this.localDb.updateQuestion(id, updates);
-                                }
-                                updatedQuestions += questionsToUpdate.length;
-                                console.log(`Updated ${questionsToUpdate.length} questions for ${subjectCode}`);
-                            }
-                            catch (bulkUpdateError) {
-                                console.error(`Bulk update error for ${subjectCode}:`, bulkUpdateError);
-                                skippedQuestions += questionsToUpdate.length;
-                            }
-                        }
+                    }
+                    try {
+                        await this.processSubjectInTransaction(subjectCode, replaceExisting, questionsToCreate, questionsToUpdate);
+                        newQuestions += questionsToCreate.length;
+                        updatedQuestions += questionsToUpdate.length;
                         totalSyncedQuestions +=
                             questionsToCreate.length + questionsToUpdate.length;
-                        try {
-                            await this.localDb.updateSubjectQuestionCount(subjectCode);
+                        if (replaceExisting && questionsToCreate.length > 0) {
+                            replacedSubjects++;
                         }
-                        catch (countUpdateError) {
-                            console.warn(`Failed to update question count for ${subjectCode}:`, countUpdateError);
-                        }
-                    });
+                        console.log(`Successfully synced ${questionsToCreate.length + questionsToUpdate.length} questions for ${subjectCode}`);
+                    }
+                    catch (transactionError) {
+                        console.error(`Transaction failed for subject ${subjectCode}:`, transactionError);
+                        skippedQuestions +=
+                            questionsToCreate.length + questionsToUpdate.length;
+                    }
                 }
                 catch (subjectError) {
                     console.error(`Failed to process subject ${subjectCode}:`, subjectError);
@@ -652,6 +652,125 @@ class MainDatabaseService {
         }
         catch (error) {
             console.error("Enhanced sync questions error:", error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown sync error",
+            };
+        }
+    }
+    /**
+     * Sync users from remote database to local database
+     */
+    async syncUsers(options) {
+        const replaceExisting = options?.replaceExisting || false;
+        try {
+            if (!this.remoteDb || !this.remoteDb.isConnected()) {
+                return {
+                    success: false,
+                    error: "Remote database not available",
+                };
+            }
+            console.log("Starting user sync...", { replaceExisting });
+            const remoteUsers = await this.remoteDb.getAllUsers();
+            if (remoteUsers.length === 0) {
+                return {
+                    success: true,
+                    usersSynced: 0,
+                    classesSynced: 0,
+                    error: "No users found in remote database",
+                };
+            }
+            console.log(`Remote data: ${remoteUsers.length} users`);
+            const usersByClass = new Map();
+            remoteUsers.forEach((user) => {
+                const userClass = user.class;
+                if (!usersByClass.has(userClass)) {
+                    usersByClass.set(userClass, []);
+                }
+                usersByClass.get(userClass).push(user);
+            });
+            let totalSyncedUsers = 0;
+            let newUsers = 0;
+            let updatedUsers = 0;
+            let skippedUsers = 0;
+            console.log("Pre-fetching existing users for transaction...");
+            const existingUsers = new Map();
+            for (const remoteUser of remoteUsers) {
+                try {
+                    const existing = await this.localDb.findUserByStudentCode(remoteUser.studentCode);
+                    if (existing) {
+                        existingUsers.set(remoteUser.studentCode, existing);
+                    }
+                }
+                catch (error) {
+                    console.warn(`Error pre-fetching user ${remoteUser.studentCode}:`, error);
+                }
+            }
+            const usersToCreate = [];
+            const usersToUpdate = [];
+            for (const [userClass, classUsers] of usersByClass) {
+                console.log(`Processing ${classUsers.length} users for class: ${userClass}`);
+                for (const remoteUser of classUsers) {
+                    try {
+                        const existingUser = existingUsers.get(remoteUser.studentCode);
+                        if (existingUser) {
+                            if (replaceExisting) {
+                                usersToUpdate.push({
+                                    id: existingUser.id,
+                                    updates: {
+                                        name: remoteUser.name,
+                                        passwordHash: remoteUser.passwordHash,
+                                        class: remoteUser.class,
+                                        gender: remoteUser.gender,
+                                        isActive: remoteUser.isActive ?? true,
+                                        updatedAt: new Date().toISOString(),
+                                    },
+                                });
+                                updatedUsers++;
+                            }
+                            else {
+                                skippedUsers++;
+                            }
+                        }
+                        else {
+                            usersToCreate.push({
+                                id: remoteUser.id,
+                                name: remoteUser.name,
+                                studentCode: remoteUser.studentCode,
+                                passwordHash: remoteUser.passwordHash,
+                                class: remoteUser.class,
+                                gender: remoteUser.gender,
+                                isActive: remoteUser.isActive ?? true,
+                                createdAt: new Date().toISOString(),
+                                updatedAt: new Date().toISOString(),
+                            });
+                            newUsers++;
+                        }
+                        totalSyncedUsers++;
+                    }
+                    catch (userProcessError) {
+                        console.warn(`Error processing user ${remoteUser.studentCode}:`, userProcessError);
+                        skippedUsers++;
+                    }
+                }
+            }
+            console.log(`Executing chunked transactions with ${usersToCreate.length} creates and ${usersToUpdate.length} updates...`);
+            await this.processUsersInChunkedTransactions(usersToCreate, usersToUpdate);
+            const result = {
+                success: true,
+                usersSynced: totalSyncedUsers,
+                classesSynced: usersByClass.size,
+                details: {
+                    newUsers,
+                    updatedUsers,
+                    skippedUsers,
+                },
+            };
+            console.log("User sync completed:", result);
+            return result;
+        }
+        catch (error) {
+            console.error("Sync users error:", error);
             return {
                 success: false,
                 error: error instanceof Error ? error.message : "Unknown sync error",
@@ -768,6 +887,78 @@ class MainDatabaseService {
                 success: false,
                 error: error instanceof Error ? error.message : "Unknown error",
             };
+        }
+    }
+    /**
+     * Process a subject's questions within a transaction for atomicity
+     */
+    async processSubjectInTransaction(subjectCode, replaceExisting, questionsToCreate, questionsToUpdate) {
+        return new Promise((resolve, reject) => {
+            try {
+                this.localDb.transaction(() => {
+                    // 1. If replace mode, delete all existing questions for this subject
+                    if (replaceExisting) {
+                        this.localDb.deleteQuestionsBySubjectCodeSync(subjectCode);
+                    }
+                    // 2. Bulk create new questions
+                    if (questionsToCreate.length > 0) {
+                        this.localDb.bulkCreateQuestionsSync(questionsToCreate);
+                    }
+                    // 3. Update existing questions (only in update mode)
+                    if (!replaceExisting && questionsToUpdate.length > 0) {
+                        for (const { id, updates } of questionsToUpdate) {
+                            this.localDb.updateQuestionSync(id, updates);
+                        }
+                    }
+                    // 4. Update subject question count
+                    this.localDb.updateSubjectQuestionCountSync(subjectCode);
+                    return { success: true };
+                });
+                resolve();
+            }
+            catch (error) {
+                reject(error);
+            }
+        });
+    }
+    /**
+     * Process users in chunked transactions for better performance and memory management
+     */
+    async processUsersInChunkedTransactions(usersToCreate, usersToUpdate) {
+        const CHUNK_SIZE = 200;
+        let totalCreated = 0;
+        let totalUpdated = 0;
+        try {
+            if (usersToCreate.length > 0) {
+                for (let i = 0; i < usersToCreate.length; i += CHUNK_SIZE) {
+                    const chunk = usersToCreate.slice(i, i + CHUNK_SIZE);
+                    this.localDb.transaction((tx) => {
+                        tx.insert(local_schema_js_1.usersTable).values(chunk).run();
+                    });
+                    totalCreated += chunk.length;
+                    console.log(`Created user chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${chunk.length} users (Total: ${totalCreated}/${usersToCreate.length})`);
+                }
+            }
+            if (usersToUpdate.length > 0) {
+                for (let i = 0; i < usersToUpdate.length; i += CHUNK_SIZE) {
+                    const chunk = usersToUpdate.slice(i, i + CHUNK_SIZE);
+                    this.localDb.transaction((tx) => {
+                        for (const userUpdate of chunk) {
+                            tx.update(local_schema_js_1.usersTable)
+                                .set(userUpdate.updates)
+                                .where((0, drizzle_orm_1.eq)(local_schema_js_1.usersTable.id, userUpdate.id))
+                                .run();
+                        }
+                    });
+                    totalUpdated += chunk.length;
+                    console.log(`Updated user chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${chunk.length} users (Total: ${totalUpdated}/${usersToUpdate.length})`);
+                }
+            }
+            console.log(`User sync transactions completed: ${totalCreated} created, ${totalUpdated} updated in chunks of ${CHUNK_SIZE}`);
+        }
+        catch (error) {
+            console.error("Chunked user transaction error:", error);
+            throw error;
         }
     }
     /**

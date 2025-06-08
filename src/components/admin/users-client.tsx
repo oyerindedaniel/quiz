@@ -25,6 +25,7 @@ import {
 import { useAdminData } from "@/hooks/use-admin-data";
 import { useFilteredData } from "@/hooks/use-filtered-data";
 import { useConnectivity } from "@/hooks/use-connectivity";
+import { UsersSkeleton } from "@/components/skeletons/users-skeleton";
 import { format } from "date-fns";
 import {
   Search,
@@ -61,6 +62,7 @@ export function UsersClient() {
   const {
     data: users,
     isLoading,
+    isRefetching,
     error,
     refresh,
   } = useAdminData((ipcDb) => ipcDb.getAllUsers(), {
@@ -256,12 +258,7 @@ export function UsersClient() {
   }, [users]);
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div>
-        <span className="ml-3 text-gray-600 font-sans">Loading users...</span>
-      </div>
-    );
+    return <UsersSkeleton />;
   }
 
   return (
@@ -315,15 +312,23 @@ export function UsersClient() {
             Enable All
           </Button>
 
+          {isRefetching && (
+            <div className="flex items-center text-brand-600">
+              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+              <span className="text-sm font-sans">Updating...</span>
+            </div>
+          )}
           <Button
             onClick={refresh}
             variant="outline"
             size="sm"
-            disabled={isLoading}
+            disabled={isLoading || isRefetching}
             className="font-sans"
           >
             <RefreshCw
-              className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+              className={`w-4 h-4 mr-2 ${
+                isLoading || isRefetching ? "animate-spin" : ""
+              }`}
             />
             Refresh
           </Button>
@@ -437,14 +442,14 @@ export function UsersClient() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-lg shadow-md border border-gray-200">
         <div className="p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900 font-sans">
             Students ({filteredUsers.length})
           </h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-max">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">

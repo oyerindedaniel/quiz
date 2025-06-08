@@ -112,7 +112,9 @@ export class SQLiteManager {
         total_questions INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        is_active INTEGER DEFAULT 1
+        is_active INTEGER DEFAULT 1,
+        category TEXT,
+        academic_year TEXT
       )`,
 
       // Questions table
@@ -175,20 +177,47 @@ export class SQLiteManager {
     ];
 
     const createIndexQueries = [
+      // Users indexes
       "CREATE INDEX IF NOT EXISTS idx_users_student_code ON users(student_code)",
       "CREATE INDEX IF NOT EXISTS idx_users_class ON users(class)",
+      "CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active)",
+
+      // Subjects indexes
       "CREATE INDEX IF NOT EXISTS idx_subjects_subject_code ON subjects(subject_code)",
       "CREATE INDEX IF NOT EXISTS idx_subjects_class ON subjects(class)",
+      "CREATE INDEX IF NOT EXISTS idx_subjects_is_active ON subjects(is_active)",
+
+      // Questions indexes - single column
       "CREATE INDEX IF NOT EXISTS idx_questions_subject_id ON questions(subject_id)",
       "CREATE INDEX IF NOT EXISTS idx_questions_subject_code ON questions(subject_code)",
+      "CREATE INDEX IF NOT EXISTS idx_questions_question_order ON questions(question_order)",
+      "CREATE INDEX IF NOT EXISTS idx_questions_is_active ON questions(is_active)",
+      "CREATE INDEX IF NOT EXISTS idx_questions_created_at ON questions(created_at)",
+
+      // Questions indexes - composite for common query patterns
+      "CREATE INDEX IF NOT EXISTS idx_questions_subject_id_active ON questions(subject_id, is_active)",
+      "CREATE INDEX IF NOT EXISTS idx_questions_subject_code_active ON questions(subject_code, is_active)",
+      "CREATE INDEX IF NOT EXISTS idx_questions_subject_id_order ON questions(subject_id, question_order)",
+      "CREATE INDEX IF NOT EXISTS idx_questions_subject_code_order ON questions(subject_code, question_order)",
+
+      // Quiz attempts indexes
       "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user_id ON quiz_attempts(user_id)",
       "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_subject_id ON quiz_attempts(subject_id)",
       "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_submitted ON quiz_attempts(submitted)",
+      "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_synced ON quiz_attempts(synced)",
+      "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user_subject ON quiz_attempts(user_id, subject_id)",
+      "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_started_at ON quiz_attempts(started_at)",
+      "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_submitted_at ON quiz_attempts(submitted_at)",
+
+      // Sync log indexes
       "CREATE INDEX IF NOT EXISTS idx_sync_log_status ON sync_log(status)",
       "CREATE INDEX IF NOT EXISTS idx_sync_log_table_name ON sync_log(table_name)",
+      "CREATE INDEX IF NOT EXISTS idx_sync_log_attempted_at ON sync_log(attempted_at)",
     ];
 
     try {
+      await this.runMigrations();
+
       for (const query of createTableQueries) {
         this.sqlite.exec(query);
       }
@@ -237,6 +266,46 @@ export class SQLiteManager {
       return stmt.run(...params);
     } catch (error) {
       console.error("Failed to run SQLite statement:", queryText, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Run database migrations to add missing columns
+   */
+  private async runMigrations(): Promise<void> {
+    if (!this.sqlite) {
+      throw new Error("SQLite instance not available");
+    }
+
+    try {
+      // Check if category column exists in subjects table
+      const categoryColumnExists = this.sqlite
+        .prepare(
+          "SELECT COUNT(*) as count FROM pragma_table_info('subjects') WHERE name = 'category'"
+        )
+        .get() as { count: number };
+
+      if (categoryColumnExists.count === 0) {
+        console.log("Adding category column to subjects table...");
+        this.sqlite.exec("ALTER TABLE subjects ADD COLUMN category TEXT");
+      }
+
+      // Check if academic_year column exists in subjects table
+      const academicYearColumnExists = this.sqlite
+        .prepare(
+          "SELECT COUNT(*) as count FROM pragma_table_info('subjects') WHERE name = 'academic_year'"
+        )
+        .get() as { count: number };
+
+      if (academicYearColumnExists.count === 0) {
+        console.log("Adding academic_year column to subjects table...");
+        this.sqlite.exec("ALTER TABLE subjects ADD COLUMN academic_year TEXT");
+      }
+
+      console.log("Database migrations completed successfully");
+    } catch (error) {
+      console.error("Error running migrations:", error);
       throw error;
     }
   }

@@ -563,6 +563,8 @@ class SyncEngine {
                                     createdAt: subject.createdAt.toISOString(),
                                     updatedAt: subject.updatedAt.toISOString(),
                                     isActive: subject.isActive,
+                                    category: subject.category || null,
+                                    academicYear: subject.academicYear || null,
                                 };
                                 await this.localDb.createSubject(localSubject);
                                 pulledRecords++;

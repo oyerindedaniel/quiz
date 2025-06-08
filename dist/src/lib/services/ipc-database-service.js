@@ -16,6 +16,10 @@ class IPCDatabaseService {
         this.checkElectronAPI();
         return window.electronAPI.user.create(userData);
     }
+    async createStudent(studentData) {
+        this.checkElectronAPI();
+        return window.electronAPI.remote.createStudent(studentData);
+    }
     // Subject operations
     async findSubjectByCode(subjectCode) {
         this.checkElectronAPI();
@@ -25,6 +29,10 @@ class IPCDatabaseService {
     async getQuestionsForSubject(subjectId) {
         this.checkElectronAPI();
         return window.electronAPI.quiz.getQuestions(subjectId);
+    }
+    async getProcessedQuestionsForSubject(subjectId) {
+        this.checkElectronAPI();
+        return window.electronAPI.quiz.getProcessedQuestions(subjectId);
     }
     // Quiz attempt operations
     async findIncompleteAttempt(userId, subjectId) {
@@ -187,6 +195,13 @@ class IPCDatabaseService {
     async syncQuestions(options) {
         this.checkElectronAPI();
         return window.electronAPI.sync.syncQuestions(options);
+    }
+    /**
+     * Sync users from remote DB to local DB
+     */
+    async syncUsers(options) {
+        this.checkElectronAPI();
+        return window.electronAPI.sync.syncUsers(options);
     }
     /**
      * Bulk create questions directly to remote database

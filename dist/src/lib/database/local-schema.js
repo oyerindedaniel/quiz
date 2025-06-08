@@ -26,6 +26,8 @@ exports.subjectsTable = (0, sqlite_core_1.sqliteTable)("subjects", {
     createdAt: (0, sqlite_core_1.text)("created_at").notNull(),
     updatedAt: (0, sqlite_core_1.text)("updated_at").notNull(),
     isActive: (0, sqlite_core_1.integer)("is_active", { mode: "boolean" }).default(true),
+    category: (0, sqlite_core_1.text)("category"),
+    academicYear: (0, sqlite_core_1.text)("academic_year"),
 });
 exports.questionsTable = (0, sqlite_core_1.sqliteTable)("questions", {
     id: (0, sqlite_core_1.text)("id").primaryKey(),

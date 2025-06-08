@@ -29,8 +29,11 @@ import type {
   UserSeedData,
   QuestionSyncResult,
   UserSyncResult,
+  LocalProcessedQuestion,
 } from "../../src/types/app.js";
 import type { SyncTrigger } from "../../src/lib/sync/sync-engine.js";
+import { usersTable } from "../../src/lib/database/local-schema.js";
+import { eq } from "drizzle-orm";
 
 export class MainDatabaseService {
   private localDb: LocalDatabaseService;
@@ -144,6 +147,12 @@ export class MainDatabaseService {
   // Question operations (Local - primary operations)
   async getQuestionsForSubject(subjectId: string): Promise<Question[]> {
     return this.localDb.getQuestionsForSubject(subjectId);
+  }
+
+  async getProcessedQuestionsForSubject(
+    subjectId: string
+  ): Promise<LocalProcessedQuestion> {
+    return this.localDb.getProcessedQuestionsForSubject(subjectId);
   }
 
   async createQuestion(
@@ -754,6 +763,8 @@ export class MainDatabaseService {
                 subjectCode: remoteSubject.subjectCode,
                 description: remoteSubject.description || "",
                 class: remoteSubject.class,
+                category: remoteSubject.category || null,
+                academicYear: remoteSubject.academicYear || null,
               });
               localSubject = await this.localDb.findSubjectByCode(subjectCode);
               newSubjectsCreated++;
@@ -773,131 +784,92 @@ export class MainDatabaseService {
             continue;
           }
 
-          await this.localDb.transaction(async (tx) => {
-            // If replace mode, delete all existing questions for this subject first
-            if (replaceExisting) {
-              const deletedCount =
-                await this.localDb.deleteQuestionsBySubjectCode(subjectCode);
-              console.log(
-                `Deleted ${deletedCount} existing questions for ${subjectCode}`
-              );
-              replacedSubjects++;
-            }
+          const questionsToCreate: Array<
+            Omit<NewQuestion, "createdAt" | "updatedAt">
+          > = [];
+          const questionsToUpdate: Array<{
+            id: string;
+            updates: Partial<Omit<NewQuestion, "id" | "createdAt">>;
+          }> = [];
 
-            const questionsToCreate: Array<
-              Omit<NewQuestion, "createdAt" | "updatedAt">
-            > = [];
-            const questionsToUpdate: Array<{
-              id: string;
-              updates: Partial<Omit<NewQuestion, "id" | "createdAt">>;
-            }> = [];
+          for (const remoteQuestion of subjectQuestions) {
+            try {
+              let shouldCreate = true;
 
-            for (const remoteQuestion of subjectQuestions) {
-              try {
-                let shouldCreate = true;
+              if (!replaceExisting) {
+                const existingQuestion =
+                  await this.localDb.findQuestionBySubjectCodeAndOrder(
+                    remoteQuestion.subjectCode,
+                    remoteQuestion.questionOrder
+                  );
 
-                if (!replaceExisting) {
-                  // Check if question exists by subject code and question order
-                  const existingQuestion =
-                    await this.localDb.findQuestionBySubjectCodeAndOrder(
-                      remoteQuestion.subjectCode,
-                      remoteQuestion.questionOrder
-                    );
-
-                  if (existingQuestion) {
-                    questionsToUpdate.push({
-                      id: existingQuestion.id,
-                      updates: {
-                        text: remoteQuestion.text,
-                        options: JSON.stringify(remoteQuestion.options),
-                        answer: remoteQuestion.answer,
-                        explanation: remoteQuestion.explanation || null,
-                      },
-                    });
-                    shouldCreate = false;
-                  }
-                }
-
-                if (shouldCreate) {
-                  questionsToCreate.push({
-                    id: remoteQuestion.id,
-                    subjectId: localSubject.id,
-                    subjectCode: remoteQuestion.subjectCode,
-                    text: remoteQuestion.text,
-                    options: JSON.stringify(remoteQuestion.options),
-                    answer: remoteQuestion.answer,
-                    questionOrder: remoteQuestion.questionOrder,
-                    explanation: remoteQuestion.explanation || null,
-                    isActive: true,
+                if (existingQuestion) {
+                  questionsToUpdate.push({
+                    id: existingQuestion.id,
+                    updates: {
+                      text: remoteQuestion.text,
+                      options: JSON.stringify(remoteQuestion.options),
+                      answer: remoteQuestion.answer,
+                      explanation: remoteQuestion.explanation || null,
+                      updatedAt: new Date().toISOString(),
+                    },
                   });
+                  shouldCreate = false;
                 }
-              } catch (questionProcessError) {
-                console.warn(
-                  `Error processing question ${remoteQuestion.id}:`,
-                  questionProcessError
-                );
-                skippedQuestions++;
               }
-            }
 
-            // Bulk create new questions for this subject
-            if (questionsToCreate.length > 0) {
-              try {
-                const createResult = await this.localDb.bulkCreateQuestions(
-                  questionsToCreate
-                );
-                if (createResult.success) {
-                  newQuestions += createResult.created;
-                  console.log(
-                    `Bulk created ${createResult.created} questions for ${subjectCode}`
-                  );
-                } else {
-                  console.error(
-                    `Bulk create failed for ${subjectCode}:`,
-                    createResult.error
-                  );
-                  skippedQuestions += questionsToCreate.length;
-                }
-              } catch (bulkCreateError) {
-                console.error(
-                  `Bulk create error for ${subjectCode}:`,
-                  bulkCreateError
-                );
-                skippedQuestions += questionsToCreate.length;
+              if (shouldCreate) {
+                questionsToCreate.push({
+                  id: remoteQuestion.id,
+                  subjectId: localSubject.id,
+                  subjectCode: remoteQuestion.subjectCode,
+                  text: remoteQuestion.text,
+                  options: JSON.stringify(remoteQuestion.options),
+                  answer: remoteQuestion.answer,
+                  questionOrder: remoteQuestion.questionOrder,
+                  explanation: remoteQuestion.explanation || null,
+                  isActive: true,
+                });
               }
+            } catch (questionProcessError) {
+              console.warn(
+                `Error processing question ${remoteQuestion.id}:`,
+                questionProcessError
+              );
+              skippedQuestions++;
             }
+          }
 
-            // Bulk update existing questions for this subject (only in update mode)
-            if (!replaceExisting && questionsToUpdate.length > 0) {
-              try {
-                for (const { id, updates } of questionsToUpdate) {
-                  await this.localDb.updateQuestion(id, updates);
-                }
-                updatedQuestions += questionsToUpdate.length;
-                console.log(
-                  `Updated ${questionsToUpdate.length} questions for ${subjectCode}`
-                );
-              } catch (bulkUpdateError) {
-                console.error(
-                  `Bulk update error for ${subjectCode}:`,
-                  bulkUpdateError
-                );
-                skippedQuestions += questionsToUpdate.length;
-              }
-            }
+          try {
+            await this.processSubjectInTransaction(
+              subjectCode,
+              replaceExisting,
+              questionsToCreate,
+              questionsToUpdate
+            );
 
+            newQuestions += questionsToCreate.length;
+            updatedQuestions += questionsToUpdate.length;
             totalSyncedQuestions +=
               questionsToCreate.length + questionsToUpdate.length;
 
-            try {
-              await this.localDb.updateSubjectQuestionCount(subjectCode);
-            } catch (countUpdateError) {
-              console.warn(
-                `Failed to update question count for ${subjectCode}:`,
-                countUpdateError
-              );
+            if (replaceExisting && questionsToCreate.length > 0) {
+              replacedSubjects++;
             }
-          });
+
+            console.log(
+              `Successfully synced ${
+                questionsToCreate.length + questionsToUpdate.length
+              } questions for ${subjectCode}`
+            );
+          } catch (transactionError) {
+            console.error(
+              `Transaction failed for subject ${subjectCode}:`,
+              transactionError
+            );
+            skippedQuestions +=
+              questionsToCreate.length + questionsToUpdate.length;
+          }
         } catch (subjectError) {
           console.error(
             `Failed to process subject ${subjectCode}:`,
@@ -976,61 +948,94 @@ export class MainDatabaseService {
       let updatedUsers = 0;
       let skippedUsers = 0;
 
-      await this.localDb.transaction(async (tx) => {
-        for (const [userClass, classUsers] of usersByClass) {
+      console.log("Pre-fetching existing users for transaction...");
+      const existingUsers = new Map<string, User>();
+      for (const remoteUser of remoteUsers) {
+        try {
+          const existing = await this.localDb.findUserByStudentCode(
+            remoteUser.studentCode
+          );
+          if (existing) {
+            existingUsers.set(remoteUser.studentCode, existing);
+          }
+        } catch (error) {
+          console.warn(
+            `Error pre-fetching user ${remoteUser.studentCode}:`,
+            error
+          );
+        }
+      }
+
+      const usersToCreate: Array<
+        Omit<NewUser, "createdAt" | "updatedAt"> & {
+          createdAt: string;
+          updatedAt: string;
+        }
+      > = [];
+      const usersToUpdate: Array<{
+        id: string;
+        updates: Partial<Omit<NewUser, "id" | "createdAt">>;
+      }> = [];
+
+      for (const [userClass, classUsers] of usersByClass) {
+        console.log(
+          `Processing ${classUsers.length} users for class: ${userClass}`
+        );
+
+        for (const remoteUser of classUsers) {
           try {
-            console.log(
-              `Processing ${classUsers.length} users for class: ${userClass}`
-            );
+            const existingUser = existingUsers.get(remoteUser.studentCode);
 
-            for (const remoteUser of classUsers) {
-              try {
-                const existingUser = await this.localDb.findUserByStudentCode(
-                  remoteUser.studentCode
-                );
-
-                if (existingUser) {
-                  if (replaceExisting) {
-                    // Update existing user
-                    await this.localDb.updateUser(existingUser.id, {
-                      name: remoteUser.name,
-                      passwordHash: remoteUser.passwordHash,
-                      class: remoteUser.class,
-                      gender: remoteUser.gender,
-                      isActive: remoteUser.isActive,
-                    });
-                    updatedUsers++;
-                  } else {
-                    skippedUsers++;
-                  }
-                } else {
-                  // Create new user
-                  await this.localDb.createUser({
-                    id: remoteUser.id,
+            if (existingUser) {
+              if (replaceExisting) {
+                usersToUpdate.push({
+                  id: existingUser.id,
+                  updates: {
                     name: remoteUser.name,
-                    studentCode: remoteUser.studentCode,
                     passwordHash: remoteUser.passwordHash,
                     class: remoteUser.class,
                     gender: remoteUser.gender,
-                    isActive: remoteUser.isActive,
-                  });
-                  newUsers++;
-                }
-                totalSyncedUsers++;
-              } catch (userProcessError) {
-                console.warn(
-                  `Error processing user ${remoteUser.studentCode}:`,
-                  userProcessError
-                );
+                    isActive: remoteUser.isActive ?? true,
+                    updatedAt: new Date().toISOString(),
+                  },
+                });
+                updatedUsers++;
+              } else {
                 skippedUsers++;
               }
+            } else {
+              usersToCreate.push({
+                id: remoteUser.id,
+                name: remoteUser.name,
+                studentCode: remoteUser.studentCode,
+                passwordHash: remoteUser.passwordHash,
+                class: remoteUser.class,
+                gender: remoteUser.gender,
+                isActive: remoteUser.isActive ?? true,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              });
+              newUsers++;
             }
-          } catch (classError) {
-            console.error(`Failed to process class ${userClass}:`, classError);
-            skippedUsers += classUsers.length;
+            totalSyncedUsers++;
+          } catch (userProcessError) {
+            console.warn(
+              `Error processing user ${remoteUser.studentCode}:`,
+              userProcessError
+            );
+            skippedUsers++;
           }
         }
-      });
+      }
+
+      console.log(
+        `Executing chunked transactions with ${usersToCreate.length} creates and ${usersToUpdate.length} updates...`
+      );
+
+      await this.processUsersInChunkedTransactions(
+        usersToCreate,
+        usersToUpdate
+      );
 
       const result = {
         success: true,
@@ -1213,6 +1218,119 @@ export class MainDatabaseService {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
       };
+    }
+  }
+
+  /**
+   * Process a subject's questions within a transaction for atomicity
+   */
+  private async processSubjectInTransaction(
+    subjectCode: string,
+    replaceExisting: boolean,
+    questionsToCreate: Array<Omit<NewQuestion, "createdAt" | "updatedAt">>,
+    questionsToUpdate: Array<{
+      id: string;
+      updates: Partial<Omit<NewQuestion, "id" | "createdAt">>;
+    }>
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        this.localDb.transaction(() => {
+          // 1. If replace mode, delete all existing questions for this subject
+          if (replaceExisting) {
+            this.localDb.deleteQuestionsBySubjectCodeSync(subjectCode);
+          }
+
+          // 2. Bulk create new questions
+          if (questionsToCreate.length > 0) {
+            this.localDb.bulkCreateQuestionsSync(questionsToCreate);
+          }
+
+          // 3. Update existing questions (only in update mode)
+          if (!replaceExisting && questionsToUpdate.length > 0) {
+            for (const { id, updates } of questionsToUpdate) {
+              this.localDb.updateQuestionSync(id, updates);
+            }
+          }
+
+          // 4. Update subject question count
+          this.localDb.updateSubjectQuestionCountSync(subjectCode);
+
+          return { success: true };
+        });
+
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * Process users in chunked transactions for better performance and memory management
+   */
+  private async processUsersInChunkedTransactions(
+    usersToCreate: Array<
+      Omit<NewUser, "createdAt" | "updatedAt"> & {
+        createdAt: string;
+        updatedAt: string;
+      }
+    >,
+    usersToUpdate: Array<{
+      id: string;
+      updates: Partial<Omit<NewUser, "id" | "createdAt">>;
+    }>
+  ): Promise<void> {
+    const CHUNK_SIZE = 200;
+    let totalCreated = 0;
+    let totalUpdated = 0;
+
+    try {
+      if (usersToCreate.length > 0) {
+        for (let i = 0; i < usersToCreate.length; i += CHUNK_SIZE) {
+          const chunk = usersToCreate.slice(i, i + CHUNK_SIZE);
+
+          this.localDb.transaction((tx) => {
+            tx.insert(usersTable).values(chunk).run();
+          });
+
+          totalCreated += chunk.length;
+          console.log(
+            `Created user chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${
+              chunk.length
+            } users (Total: ${totalCreated}/${usersToCreate.length})`
+          );
+        }
+      }
+
+      if (usersToUpdate.length > 0) {
+        for (let i = 0; i < usersToUpdate.length; i += CHUNK_SIZE) {
+          const chunk = usersToUpdate.slice(i, i + CHUNK_SIZE);
+
+          this.localDb.transaction((tx) => {
+            for (const userUpdate of chunk) {
+              tx.update(usersTable)
+                .set(userUpdate.updates)
+                .where(eq(usersTable.id, userUpdate.id))
+                .run();
+            }
+          });
+
+          totalUpdated += chunk.length;
+          console.log(
+            `Updated user chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${
+              chunk.length
+            } users (Total: ${totalUpdated}/${usersToUpdate.length})`
+          );
+        }
+      }
+
+      console.log(
+        `User sync transactions completed: ${totalCreated} created, ${totalUpdated} updated in chunks of ${CHUNK_SIZE}`
+      );
+    } catch (error) {
+      console.error("Chunked user transaction error:", error);
+      throw error;
     }
   }
 

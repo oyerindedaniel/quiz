@@ -121,6 +121,7 @@ export function EnhancedQuizContainer() {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       const session = await authService.getCurrentSession();
+
       if (!session.isAuthenticated || !session.user || !session.subject) {
         router.push("/");
         return;
@@ -226,7 +227,7 @@ export function EnhancedQuizContainer() {
       const item = questionItems[i];
 
       if (item.type === "question") {
-        const isAnswered = item.question.id in answers;
+        const isAnswered = controller.isQuestionAnswered(item.question.id);
         if (!isAnswered) {
           controller.syncCurrentQuestionIndex(item.question.id);
           return i;
@@ -238,7 +239,9 @@ export function EnhancedQuizContainer() {
           questionItems[nextIndex].type === "question"
         ) {
           const pairedQuestion = questionItems[nextIndex];
-          const isAnswered = pairedQuestion.question.id in answers;
+          const isAnswered = controller.isQuestionAnswered(
+            pairedQuestion.question.id
+          );
           if (!isAnswered) {
             controller.syncCurrentQuestionIndex(pairedQuestion.question.id);
             return i; // Return header/image index

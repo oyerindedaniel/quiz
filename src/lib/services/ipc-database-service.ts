@@ -23,6 +23,7 @@ import type {
   UserSeedData,
   UserSyncResult,
   QuestionSyncResult,
+  LocalProcessedQuestion,
 } from "../../types/app.js";
 import type { RemoteAdmin } from "../database/remote-schema.js";
 
@@ -65,6 +66,13 @@ export class IPCDatabaseService {
   async getQuestionsForSubject(subjectId: string): Promise<Question[]> {
     this.checkElectronAPI();
     return window.electronAPI.quiz.getQuestions(subjectId);
+  }
+
+  async getProcessedQuestionsForSubject(
+    subjectId: string
+  ): Promise<LocalProcessedQuestion> {
+    this.checkElectronAPI();
+    return window.electronAPI.quiz.getProcessedQuestions(subjectId);
   }
 
   // Quiz attempt operations

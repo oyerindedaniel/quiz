@@ -25,7 +25,6 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-50 to-brand-100 flex flex-col items-center justify-center p-4">
-      {/* Sync Menu - positioned top right */}
       <SyncMenu />
 
       <div className="fixed top-4 left-4 z-10">

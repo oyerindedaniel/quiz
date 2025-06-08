@@ -194,11 +194,25 @@ export class QuestionProcessor {
     questionItems: QuestionItem[],
     currentIndex: number
   ): number | null {
-    for (let i = currentIndex + 1; i < questionItems.length; i++) {
+    // If we're currently at a header or image, skip its paired question
+    let startIndex = currentIndex + 1;
+
+    // If current item is header/image paired with next question, skip the paired question
+    const currentItem = questionItems[currentIndex];
+    if (
+      currentItem &&
+      (currentItem.type === "header" || currentItem.type === "image") &&
+      currentIndex + 1 < questionItems.length &&
+      questionItems[currentIndex + 1].type === "question"
+    ) {
+      startIndex = currentIndex + 2; // Skip the paired question
+    }
+
+    for (let i = startIndex; i < questionItems.length; i++) {
       if (questionItems[i].type === "question") {
         return i;
       }
-      // Skip to next question if current is header or image (header/image + question are paired)
+      // Check for header or image paired with a question
       if (
         (questionItems[i].type === "header" ||
           questionItems[i].type === "image") &&
@@ -206,6 +220,10 @@ export class QuestionProcessor {
         questionItems[i + 1].type === "question"
       ) {
         return i; // Return header/image index, component will handle pairing
+      }
+      // Include passages in navigation
+      if (questionItems[i].type === "passage") {
+        return i;
       }
     }
     return null;
@@ -218,7 +236,22 @@ export class QuestionProcessor {
     questionItems: QuestionItem[],
     currentIndex: number
   ): number | null {
-    for (let i = currentIndex - 1; i >= 0; i--) {
+    // If we're currently at a question paired with a header/image, skip back appropriately
+    let startIndex = currentIndex - 1;
+
+    // If current item is a question paired with previous header/image, skip back further
+    const currentItem = questionItems[currentIndex];
+    if (
+      currentItem &&
+      currentItem.type === "question" &&
+      currentIndex > 0 &&
+      (questionItems[currentIndex - 1].type === "header" ||
+        questionItems[currentIndex - 1].type === "image")
+    ) {
+      startIndex = currentIndex - 2; // Skip back past the header/image pair
+    }
+
+    for (let i = startIndex; i >= 0; i--) {
       if (questionItems[i].type === "question") {
         // Check if this question is paired with a previous header or image
         if (
@@ -230,6 +263,16 @@ export class QuestionProcessor {
         }
         return i;
       }
+      // Check for header or image paired with a question
+      if (
+        (questionItems[i].type === "header" ||
+          questionItems[i].type === "image") &&
+        i + 1 < questionItems.length &&
+        questionItems[i + 1].type === "question"
+      ) {
+        return i; // Return header/image index for paired display
+      }
+      // Include passages in navigation
       if (questionItems[i].type === "passage") {
         return i;
       }
@@ -359,6 +402,10 @@ export class QuestionProcessor {
    */
   static findFirstAnswerableIndex(questionItems: QuestionItem[]): number {
     for (let i = 0; i < questionItems.length; i++) {
+      // Include passages as they should be shown first
+      if (questionItems[i].type === "passage") {
+        return i;
+      }
       if (questionItems[i].type === "question") {
         return i;
       }

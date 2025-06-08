@@ -19,6 +19,7 @@ import type {
   UserWithAttempts,
   AdminRole,
   UserSeedData,
+  RemoteProcessedQuestion,
 } from "../../types/app.js";
 import { buildExcludedSetClause } from "../../utils/drizzle.js";
 
@@ -275,14 +276,46 @@ export class RemoteDatabaseService {
       .where(
         and(
           eq(remoteSchema.questions.subjectId, subjectId),
-          eq(remoteSchema.questions.isActive, true),
+          eq(remoteSchema.questions.isActive, true)
+        )
+      )
+      .orderBy(remoteSchema.questions.questionOrder);
+  }
 
+  async getProcessedQuestionsForSubject(
+    subjectId: string
+  ): Promise<RemoteProcessedQuestion> {
+    const db = this.getDb();
+
+    const questionItems = await db
+      .select()
+      .from(remoteSchema.questions)
+      .where(
+        and(
+          eq(remoteSchema.questions.subjectId, subjectId),
+          eq(remoteSchema.questions.isActive, true)
+        )
+      )
+      .orderBy(remoteSchema.questions.questionOrder);
+
+    const answerableQuestions = await db
+      .select()
+      .from(remoteSchema.questions)
+      .where(
+        and(
+          eq(remoteSchema.questions.subjectId, subjectId),
+          eq(remoteSchema.questions.isActive, true),
           sql`${remoteSchema.questions.text} NOT LIKE '[PASSAGE]%'`,
           sql`${remoteSchema.questions.text} NOT LIKE '[HEADER]%'`,
           sql`${remoteSchema.questions.text} NOT LIKE '[IMAGE]%'`
         )
-      )
-      .orderBy(remoteSchema.questions.questionOrder);
+      );
+
+    return {
+      questionItems,
+      actualQuestions: answerableQuestions,
+      totalQuestions: answerableQuestions.length,
+    };
   }
 
   async createQuestion(
@@ -362,7 +395,7 @@ export class RemoteDatabaseService {
   async updateSubjectQuestionCount(subjectCode: string): Promise<void> {
     const db = this.getDb();
 
-    // Only count answerable questions (not passages and headers)
+    // Only count answerable questions (not passages, headers and images)
     const questionCount = await db
       .select()
       .from(remoteSchema.questions)
@@ -1504,23 +1537,61 @@ export class RemoteDatabaseService {
     }
   }
 
-  //TODO: Possible circular dependency
   /**
-   * Get student credentials
+   * Get student credentials - includes both seeded and remotely created students
    */
   async getStudentCredentials(): Promise<Array<UserSeedData>> {
     try {
-      const { ALL_STUDENTS } = await import("../constants/students.js");
+      const db = this.getDb();
 
-      return ALL_STUDENTS.map((student, index) => {
-        const pin = String(100000 + (index + 1)).padStart(6, "1");
+      const allUsers = await db
+        .select({
+          id: remoteSchema.users.id,
+          name: remoteSchema.users.name,
+          studentCode: remoteSchema.users.studentCode,
+          passwordHash: remoteSchema.users.passwordHash,
+          class: remoteSchema.users.class,
+          gender: remoteSchema.users.gender,
+          createdAt: remoteSchema.users.createdAt,
+        })
+        .from(remoteSchema.users)
+        .where(eq(remoteSchema.users.isActive, true))
+        .orderBy(remoteSchema.users.studentCode);
+
+      let seededStudentCodes: Set<string> = new Set();
+      let seededStudentsMap: Map<string, string> = new Map();
+      try {
+        const { ALL_STUDENTS } = await import("../constants/students.js");
+        seededStudentCodes = new Set(
+          ALL_STUDENTS.map((s: { studentCode: string }) => s.studentCode)
+        );
+        ALL_STUDENTS.forEach(
+          (s: { studentCode: string; pin?: string }, index: number) => {
+            const pin = s.pin || String(100000 + (index + 1)).padStart(6, "1");
+            seededStudentsMap.set(s.studentCode, pin);
+          }
+        );
+      } catch (error) {
+        console.warn("Could not load seeded students constants:", error);
+      }
+
+      return allUsers.map((user) => {
+        const isSeededStudent = seededStudentCodes.has(user.studentCode);
+
+        let pin: string;
+        if (isSeededStudent) {
+          pin =
+            seededStudentsMap.get(user.studentCode) || "[HIDDEN - Remote User]";
+        } else {
+          pin = "[HIDDEN - Remote User]";
+        }
 
         return {
-          name: student.name,
-          studentCode: student.studentCode,
+          name: user.name,
+          studentCode: user.studentCode,
           pin: pin,
-          class: student.class,
-          gender: student.gender,
+          class: user.class,
+          gender: user.gender,
         };
       });
     } catch (error) {

@@ -8,7 +8,6 @@ import type {
   SubmissionResult,
 } from "@/types/app";
 import type { NewQuizAttempt } from "../database/local-schema";
-import { QuestionProcessor } from "./question-processor";
 
 export class QuizController {
   private ipcDb: IPCDatabaseService;
@@ -95,25 +94,36 @@ export class QuizController {
    * Resume existing quiz attempt
    */
   private async resumeQuiz(attempt: QuizAttempt): Promise<QuizSession> {
-    const questions = await this.ipcDb.getQuestionsForSubject(
+    const questions = await this.ipcDb.getProcessedQuestionsForSubject(
       attempt.subjectId
     );
 
-    if (questions.length === 0) {
+    if (questions.totalQuestions === 0) {
       throw new Error("No questions available for this subject");
     }
 
     const answers = attempt.answers ? JSON.parse(attempt.answers) : {};
-    const currentQuestionIndex = Math.min(
-      Object.keys(answers).length,
-      questions.length - 1
-    );
+
+    // Find the first unanswered question
+    // This handles non-sequential answering patterns
+    let currentQuestionIndex = 0;
+    for (let i = 0; i < questions.actualQuestions.length; i++) {
+      if (!answers[questions.actualQuestions[i].id]) {
+        currentQuestionIndex = i;
+        break;
+      }
+      // If all questions are answered, stay at the last question
+      if (i === questions.actualQuestions.length - 1) {
+        currentQuestionIndex = i;
+      }
+    }
 
     this.sessionStartTime = Date.now();
 
     this.currentSession = {
       attemptId: attempt.id,
-      questions,
+      questions: questions.questionItems,
+      totalQuestions: questions.totalQuestions,
       currentQuestionIndex,
       answers,
       isResume: true,
@@ -132,9 +142,11 @@ export class QuizController {
     userId: string,
     subjectId: string
   ): Promise<QuizSession> {
-    const questions = await this.ipcDb.getQuestionsForSubject(subjectId);
+    const questions = await this.ipcDb.getProcessedQuestionsForSubject(
+      subjectId
+    );
 
-    if (questions.length === 0) {
+    if (questions.totalQuestions === 0) {
       throw new Error("No questions available for this subject");
     }
 
@@ -142,7 +154,7 @@ export class QuizController {
       id: generateUUID(),
       userId,
       subjectId,
-      totalQuestions: questions.length,
+      totalQuestions: questions.totalQuestions,
       elapsedTime: 0,
     };
 
@@ -152,7 +164,8 @@ export class QuizController {
 
     this.currentSession = {
       attemptId,
-      questions,
+      questions: questions.questionItems,
+      totalQuestions: questions.totalQuestions,
       currentQuestionIndex: 0,
       answers: {},
       isResume: false,
@@ -488,7 +501,7 @@ export class QuizController {
       return { totalScore: 0, totalQuestions: 0, correctAnswers: 0 };
     }
 
-    const { questions, answers } = this.currentSession;
+    const { questions, answers, totalQuestions } = this.currentSession;
     let correctAnswers = 0;
 
     for (const question of questions) {
@@ -500,7 +513,7 @@ export class QuizController {
 
     return {
       totalScore: correctAnswers,
-      totalQuestions: questions.length,
+      totalQuestions: totalQuestions || questions.length,
       correctAnswers,
     };
   }
