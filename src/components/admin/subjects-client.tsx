@@ -14,16 +14,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+
 import { useAdminData } from "@/hooks/use-admin-data";
 import { useFilteredData } from "@/hooks/use-filtered-data";
+import { SubjectsSkeleton } from "@/components/skeletons/subjects-skeleton";
 import {
   Search,
   RefreshCw,
@@ -40,6 +34,7 @@ export function SubjectsClient() {
   const {
     data: subjects,
     isLoading,
+    isRefetching,
     error,
     refresh,
   } = useAdminData((ipcDb) => ipcDb.getAllSubjects(), {
@@ -124,14 +119,7 @@ export function SubjectsClient() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div>
-        <span className="ml-3 text-gray-600 font-sans">
-          Loading subjects...
-        </span>
-      </div>
-    );
+    return <SubjectsSkeleton />;
   }
 
   return (
@@ -145,7 +133,13 @@ export function SubjectsClient() {
             Manage subjects and view performance metrics
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {isRefetching && (
+            <div className="flex items-center text-brand-600">
+              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+              <span className="text-sm font-sans">Updating...</span>
+            </div>
+          )}
           <Button
             onClick={downloadSubjects}
             variant="outline"
@@ -160,11 +154,13 @@ export function SubjectsClient() {
             onClick={refresh}
             variant="outline"
             size="sm"
-            disabled={isLoading}
+            disabled={isLoading || isRefetching}
             className="font-sans"
           >
             <RefreshCw
-              className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+              className={`w-4 h-4 mr-2 ${
+                isLoading || isRefetching ? "animate-spin" : ""
+              }`}
             />
             Refresh
           </Button>
@@ -276,29 +272,43 @@ export function SubjectsClient() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+      <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
         <div className="p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900 font-sans">
             Subjects ({filteredSubjects.length})
           </h2>
         </div>
         <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="font-sans">Subject</TableHead>
-                <TableHead className="font-sans">Code</TableHead>
-                <TableHead className="font-sans">Questions</TableHead>
-                <TableHead className="font-sans">Attempts</TableHead>
-                <TableHead className="font-sans">Avg Score</TableHead>
-                <TableHead className="font-sans">Performance</TableHead>
-                <TableHead className="font-sans">Created</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Subject
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Code
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Questions
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Attempts
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Avg Score
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Performance
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Created
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
               {filteredSubjects.map((subject) => (
-                <TableRow key={subject.id}>
-                  <TableCell>
+                <tr key={subject.id} className="hover:bg-gray-50">
+                  <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                     <div className="flex flex-col">
                       <span className="font-medium text-gray-900 font-sans">
                         {subject.subjectName}
@@ -309,29 +319,29 @@ export function SubjectsClient() {
                         </span>
                       )}
                     </div>
-                  </TableCell>
-                  <TableCell>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                     <Badge variant="outline" className="font-mono">
                       {subject.subjectCode}
                     </Badge>
-                  </TableCell>
-                  <TableCell>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                     <div className="flex items-center space-x-2">
                       <HelpCircle className="w-4 h-4 text-gray-400" />
                       <span className="font-mono text-sm">
                         {subject.questionCount}
                       </span>
                     </div>
-                  </TableCell>
-                  <TableCell>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                     <div className="flex items-center space-x-2">
                       <TrendingUp className="w-4 h-4 text-gray-400" />
                       <span className="font-mono text-sm">
                         {subject.attemptCount}
                       </span>
                     </div>
-                  </TableCell>
-                  <TableCell>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                     {subject.attemptCount > 0 ? (
                       <span className="font-mono text-sm font-medium">
                         {subject.averageScore}%
@@ -341,8 +351,8 @@ export function SubjectsClient() {
                         No attempts
                       </span>
                     )}
-                  </TableCell>
-                  <TableCell>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                     {subject.attemptCount > 0 ? (
                       <Badge
                         className={cn(
@@ -357,16 +367,16 @@ export function SubjectsClient() {
                         N/A
                       </span>
                     )}
-                  </TableCell>
-                  <TableCell>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                     <span className="text-sm text-gray-500 font-mono">
                       {new Date(subject.createdAt).toLocaleDateString()}
                     </span>
-                  </TableCell>
-                </TableRow>
+                  </td>
+                </tr>
               ))}
-            </TableBody>
-          </Table>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

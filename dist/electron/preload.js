@@ -12,7 +12,9 @@ const electronAPI = {
     // Quiz operations (secure)
     quiz: {
         getQuestions: (subjectId) => electron_1.ipcRenderer.invoke("quiz:get-questions", subjectId),
+        getProcessedQuestions: (subjectId) => electron_1.ipcRenderer.invoke("quiz:get-processed-questions", subjectId),
         findIncompleteAttempt: (userId, subjectId) => electron_1.ipcRenderer.invoke("quiz:find-incomplete-attempt", userId, subjectId),
+        hasSubmittedAttempt: (userId, subjectId) => electron_1.ipcRenderer.invoke("quiz:has-submitted-attempt", userId, subjectId),
         createAttempt: (attemptData) => electron_1.ipcRenderer.invoke("quiz:create-attempt", attemptData),
         getAttempt: (attemptId) => electron_1.ipcRenderer.invoke("quiz:get-attempt", attemptId),
         saveAnswer: (attemptId, questionId, answer) => electron_1.ipcRenderer.invoke("quiz:save-answer", attemptId, questionId, answer),
@@ -46,6 +48,9 @@ const electronAPI = {
         getStatus: () => electron_1.ipcRenderer.invoke("sync:get-status"),
         queueOperation: (operation) => electron_1.ipcRenderer.invoke("sync:queue-operation", operation),
         syncQuestions: (options) => electron_1.ipcRenderer.invoke("sync:sync-questions", options),
+        syncUsers: (options) => electron_1.ipcRenderer.invoke("sync:sync-users", options),
+        syncLocalDB: () => electron_1.ipcRenderer.invoke("sync:sync-local-db"),
+        isLocalDBEmpty: () => electron_1.ipcRenderer.invoke("sync:is-local-db-empty"),
     },
     // Seed operations (secure)
     seed: {
@@ -81,6 +86,11 @@ const electronAPI = {
         toggleAllUsersActive: (isActive) => electron_1.ipcRenderer.invoke("admin:toggle-all-users-active", isActive),
         toggleUserActive: (studentCode, isActive) => electron_1.ipcRenderer.invoke("admin:toggle-user-active", studentCode, isActive),
         changeUserPin: (studentCode, newPin) => electron_1.ipcRenderer.invoke("admin:change-user-pin", studentCode, newPin),
+    },
+    // Remote operations (secure)
+    remote: {
+        bulkCreateQuestions: (questions) => electron_1.ipcRenderer.invoke("remote:bulk-create-questions", questions),
+        createStudent: (studentData) => electron_1.ipcRenderer.invoke("remote:create-student", studentData),
     },
 };
 electron_1.contextBridge.exposeInMainWorld("electronAPI", electronAPI);

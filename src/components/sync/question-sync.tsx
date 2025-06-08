@@ -15,35 +15,28 @@ import {
   XCircle,
   AlertCircle,
 } from "lucide-react";
+import type { QuestionSyncResult } from "@/types/app";
+import { isElectron } from "@/utils/lib";
 
 const dbService = new IPCDatabaseService();
-
-interface SyncResult {
-  success: boolean;
-  questionsPulled?: number;
-  subjectsSynced?: number;
-  error?: string;
-  details?: {
-    newSubjects: number;
-    updatedQuestions: number;
-    newQuestions: number;
-    skippedQuestions: number;
-    replacedSubjects: number;
-  };
-}
 
 export default function QuestionSync() {
   const [isLoading, setIsLoading] = useState(false);
   const [subjectCodesInput, setSubjectCodesInput] = useState("");
   const [replaceMode, setReplaceMode] = useState(false);
-  const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null);
+  const [lastSyncResult, setLastSyncResult] =
+    useState<QuestionSyncResult | null>(null);
 
   const handleSync = async () => {
+    if (!isElectron()) {
+      toast.success("This application requires Electron to run");
+      return;
+    }
+
     setIsLoading(true);
     setLastSyncResult(null);
 
     try {
-      // Parse subject codes from input
       const subjectCodes = subjectCodesInput
         .split(",")
         .map((code) => code.trim().toUpperCase())
@@ -92,20 +85,18 @@ export default function QuestionSync() {
     .filter((code) => code.length > 0);
 
   return (
-    <div className="w-full max-w-2xl bg-white rounded-lg border border-brand-200 p-6 space-y-6 font-sans">
-      {/* Header */}
+    <div className="w-full max-w-2xl bg-white rounded-lg border border-brand-200 p-6 space-y-6 font-sans overflow-y-auto">
       <div className="space-y-2">
         <h3 className="text-lg font-bold text-brand-900 flex items-center gap-2 font-sans">
           <Database className="h-5 w-5 text-brand-600" />
           Question Sync
         </h3>
         <p className="text-sm text-brand-600 font-sans">
-          Sync questions from remote database to local storage with advanced
+          Sync questions from remote database to local database with advanced
           options
         </p>
       </div>
 
-      {/* Subject Codes Input */}
       <div className="space-y-2">
         <label
           htmlFor="subjectCodes"
@@ -126,9 +117,8 @@ export default function QuestionSync() {
           specific subjects.
         </div>
 
-        {/* Preview parsed codes */}
         {parsedSubjectCodes.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
+          <div className="flex flex-wrap items-center gap-1 mt-2">
             <span className="text-xs text-brand-600 font-sans">
               Target subjects:
             </span>
@@ -146,7 +136,6 @@ export default function QuestionSync() {
 
       <Separator className="bg-brand-200" />
 
-      {/* Sync Mode Options */}
       <div className="space-y-4">
         <span className="text-sm font-semibold text-brand-800 font-sans">
           Sync Mode
@@ -194,7 +183,6 @@ export default function QuestionSync() {
 
       <Separator className="bg-brand-200" />
 
-      {/* Sync Button */}
       <Button
         onClick={handleSync}
         disabled={isLoading}
@@ -219,7 +207,6 @@ export default function QuestionSync() {
         )}
       </Button>
 
-      {/* Last Sync Result */}
       {lastSyncResult && (
         <div
           className={`rounded-lg border p-4 font-sans ${

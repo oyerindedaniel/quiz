@@ -13,6 +13,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { IPCDatabaseService } from "@/lib/services/ipc-database-service";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
+import { CreateUserSkeleton } from "@/components/skeletons/create-user-skeleton";
 import type { Gender, Class } from "@/lib/database/remote-schema";
 
 interface CreateUserData {
@@ -138,12 +139,7 @@ export function CreateUserClient() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div>
-        <span className="ml-3 text-gray-600 font-sans">Loading...</span>
-      </div>
-    );
+    return <CreateUserSkeleton />;
   }
 
   if (!admin) {
@@ -169,7 +165,6 @@ export function CreateUserClient() {
         </p>
       </div>
 
-      {/* Create User Section */}
       <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
         <div className="bg-brand-50 px-6 py-4 border-b border-brand-200">
           <h2 className="text-xl font-semibold text-brand-800 font-sans">
@@ -302,7 +297,6 @@ export function CreateUserClient() {
         </div>
       </div>
 
-      {/* Delete Attempts Section */}
       <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
         <div className="bg-red-50 px-6 py-4 border-b border-red-200">
           <h2 className="text-xl font-semibold text-red-800 font-sans">

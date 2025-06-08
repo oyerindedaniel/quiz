@@ -8,7 +8,6 @@ import type {
   SubmissionResult,
 } from "@/types/app";
 import type { NewQuizAttempt } from "../database/local-schema";
-import { QuestionProcessor } from "./question-processor";
 
 export class QuizController {
   private ipcDb: IPCDatabaseService;
@@ -45,10 +44,36 @@ export class QuizController {
   }
 
   /**
+   * Check if there's an existing submitted attempt (to prevent retakes)
+   */
+  async hasSubmittedAttempt(
+    userId: string,
+    subjectId: string
+  ): Promise<boolean> {
+    try {
+      return await this.ipcDb.hasSubmittedAttempt(userId, subjectId);
+    } catch (error) {
+      console.error("Failed to check for submitted attempt:", error);
+      return false;
+    }
+  }
+
+  /**
    * Start a new quiz or resume existing one
    */
   async startQuiz(userId: string, subjectId: string): Promise<QuizSession> {
     try {
+      const hasSubmitted = await this.ipcDb.hasSubmittedAttempt(
+        userId,
+        subjectId
+      );
+
+      if (hasSubmitted) {
+        throw new Error(
+          "You have already completed this quiz. Retakes are not allowed."
+        );
+      }
+
       const existingAttempt = await this.ipcDb.findIncompleteAttempt(
         userId,
         subjectId
@@ -61,7 +86,7 @@ export class QuizController {
       }
     } catch (error) {
       console.error("Failed to start quiz:", error);
-      throw new Error("Failed to start quiz. Please try again.");
+      throw error;
     }
   }
 
@@ -69,25 +94,36 @@ export class QuizController {
    * Resume existing quiz attempt
    */
   private async resumeQuiz(attempt: QuizAttempt): Promise<QuizSession> {
-    const questions = await this.ipcDb.getQuestionsForSubject(
+    const questions = await this.ipcDb.getProcessedQuestionsForSubject(
       attempt.subjectId
     );
 
-    if (questions.length === 0) {
+    if (questions.totalQuestions === 0) {
       throw new Error("No questions available for this subject");
     }
 
     const answers = attempt.answers ? JSON.parse(attempt.answers) : {};
-    const currentQuestionIndex = Math.min(
-      Object.keys(answers).length,
-      questions.length - 1
-    );
+
+    // Find the first unanswered question
+    // This handles non-sequential answering patterns
+    let currentQuestionIndex = 0;
+    for (let i = 0; i < questions.actualQuestions.length; i++) {
+      if (!answers[questions.actualQuestions[i].id]) {
+        currentQuestionIndex = i;
+        break;
+      }
+      // If all questions are answered, stay at the last question
+      if (i === questions.actualQuestions.length - 1) {
+        currentQuestionIndex = i;
+      }
+    }
 
     this.sessionStartTime = Date.now();
 
     this.currentSession = {
       attemptId: attempt.id,
-      questions,
+      questions: questions.questionItems,
+      totalQuestions: questions.totalQuestions,
       currentQuestionIndex,
       answers,
       isResume: true,
@@ -106,9 +142,11 @@ export class QuizController {
     userId: string,
     subjectId: string
   ): Promise<QuizSession> {
-    const questions = await this.ipcDb.getQuestionsForSubject(subjectId);
+    const questions = await this.ipcDb.getProcessedQuestionsForSubject(
+      subjectId
+    );
 
-    if (questions.length === 0) {
+    if (questions.totalQuestions === 0) {
       throw new Error("No questions available for this subject");
     }
 
@@ -116,7 +154,7 @@ export class QuizController {
       id: generateUUID(),
       userId,
       subjectId,
-      totalQuestions: questions.length,
+      totalQuestions: questions.totalQuestions,
       elapsedTime: 0,
     };
 
@@ -126,7 +164,8 @@ export class QuizController {
 
     this.currentSession = {
       attemptId,
-      questions,
+      questions: questions.questionItems,
+      totalQuestions: questions.totalQuestions,
       currentQuestionIndex: 0,
       answers: {},
       isResume: false,
@@ -462,7 +501,7 @@ export class QuizController {
       return { totalScore: 0, totalQuestions: 0, correctAnswers: 0 };
     }
 
-    const { questions, answers } = this.currentSession;
+    const { questions, answers, totalQuestions } = this.currentSession;
     let correctAnswers = 0;
 
     for (const question of questions) {
@@ -474,9 +513,7 @@ export class QuizController {
 
     return {
       totalScore: correctAnswers,
-      // TODO: this is a hack to get the total questions
-      totalQuestions:
-        QuestionProcessor.processQuestions(questions).actualQuestions.length,
+      totalQuestions: totalQuestions || questions.length,
       correctAnswers,
     };
   }

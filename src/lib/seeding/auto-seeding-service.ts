@@ -1,5 +1,5 @@
 import { CSVImportService } from "../import/csv-import-service.js";
-import { UserSeedingService } from "../auth/user-seeding-service.js";
+import { UserSeedingService } from "./user-seeding-service.js";
 import { normalizeError } from "../../error/err.js";
 import * as fs from "fs/promises";
 import * as path from "path";

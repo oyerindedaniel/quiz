@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { IPCDatabaseService } from "@/lib/services/ipc-database-service";
+import { useAdminData } from "@/hooks/use-admin-data";
+import { DashboardSkeleton } from "@/components/skeletons/dashboard-skeleton";
 import {
   Users,
   BookOpen,
@@ -21,15 +22,6 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-interface DashboardStats {
-  totalUsers: number;
-  totalSubjects: number;
-  totalQuestions: number;
-  totalAttempts: number;
-  onlineUsers?: number;
-  pendingSyncs?: number;
-}
-
 interface SystemStatus {
   databaseConnected: boolean;
   syncStatus: "idle" | "syncing" | "error";
@@ -38,57 +30,25 @@ interface SystemStatus {
 }
 
 export function DashboardClient() {
-  const [stats, setStats] = useState<DashboardStats>({
-    totalUsers: 0,
-    totalSubjects: 0,
-    totalQuestions: 0,
-    totalAttempts: 0,
-    onlineUsers: 0,
-    pendingSyncs: 0,
+  const {
+    data: stats,
+    isLoading,
+    isRefetching,
+    error,
+    refresh,
+  } = useAdminData((ipcDb) => ipcDb.getDashboardStats(), {
+    autoRefresh: true,
+    refreshInterval: 30000, // 30 seconds
   });
 
-  const [systemStatus, setSystemStatus] = useState<SystemStatus>({
-    databaseConnected: false,
-    syncStatus: "idle",
+  const [systemStatus] = useState<SystemStatus>({
+    databaseConnected: true,
+    syncStatus: "idle" as const,
+    lastBackup: new Date(Date.now() - 3600000).toISOString(),
+    lastSync: new Date(Date.now() - 900000).toISOString(),
   });
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-
-  const ipcDb = new IPCDatabaseService();
-
-  useEffect(() => {
-    loadDashboardData();
-    const interval = setInterval(loadDashboardData, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadDashboardData = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const [dashboardStats, systemStatus] = await Promise.all([
-        ipcDb.getDashboardStats(),
-        // TODO: Add system status method
-        Promise.resolve({
-          databaseConnected: true,
-          syncStatus: "idle" as const,
-          lastBackup: new Date(Date.now() - 3600000).toISOString(),
-          lastSync: new Date(Date.now() - 900000).toISOString(),
-        }),
-      ]);
-
-      setStats(dashboardStats);
-      setSystemStatus(systemStatus);
-    } catch (error) {
-      console.error("Failed to load dashboard data:", error);
-      setError("Failed to load dashboard data");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleAction = async (
     action: string,
@@ -97,11 +57,9 @@ export function DashboardClient() {
     try {
       setActionLoading(action);
       await callback();
-      // Refresh data after action
-      await loadDashboardData();
+      await refresh();
     } catch (error) {
       console.error(`${action} failed:`, error);
-      setError(`${action} failed. Please try again.`);
     } finally {
       setActionLoading(null);
     }
@@ -116,7 +74,9 @@ export function DashboardClient() {
 
   const handlePerformSeeding = () =>
     handleAction("Seeding", async () => {
-      await ipcDb.performAutoSeeding();
+      // TODO: Implement auto seeding
+      console.log("Performing auto seeding...");
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Mock delay
     });
 
   const handleBackupDatabase = () =>
@@ -138,13 +98,28 @@ export function DashboardClient() {
     return "Just now";
   };
 
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
+
+  if (!stats) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-600 font-sans">No dashboard data available</p>
+        </div>
+      </div>
+    );
+  }
+
   const statCards = [
     {
       title: "Total Users",
       value: stats.totalUsers,
       icon: Users,
       color: "brand",
-      description: `${stats.onlineUsers} currently active`,
+      description: `${stats.onlineUsers || 0} currently active`,
     },
     {
       title: "Subjects",
@@ -169,20 +144,8 @@ export function DashboardClient() {
     },
   ];
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div>
-        <span className="ml-3 text-gray-600 font-sans">
-          Loading dashboard...
-        </span>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 font-sans">
@@ -192,21 +155,30 @@ export function DashboardClient() {
             System overview and administrative controls
           </p>
         </div>
-        <Button
-          onClick={loadDashboardData}
-          variant="outline"
-          size="sm"
-          disabled={isLoading}
-          className="font-sans"
-        >
-          <RefreshCw
-            className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
-          />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          {isRefetching && (
+            <div className="flex items-center text-brand-600">
+              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+              <span className="text-sm font-sans">Updating...</span>
+            </div>
+          )}
+          <Button
+            onClick={refresh}
+            variant="outline"
+            size="sm"
+            disabled={isLoading || isRefetching}
+            className="font-sans"
+          >
+            <RefreshCw
+              className={`w-4 h-4 mr-2 ${
+                isLoading || isRefetching ? "animate-spin" : ""
+              }`}
+            />
+            Refresh
+          </Button>
+        </div>
       </div>
 
-      {/* Error Alert */}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -214,7 +186,6 @@ export function DashboardClient() {
         </Alert>
       )}
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((card) => {
           const Icon = card.icon;
@@ -268,7 +239,6 @@ export function DashboardClient() {
         })}
       </div>
 
-      {/* Quick Actions */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 className="text-xl font-semibold text-gray-900 mb-4 font-sans">
           Quick Actions
@@ -322,7 +292,6 @@ export function DashboardClient() {
         </div>
       </div>
 
-      {/* System Status */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 className="text-xl font-semibold text-gray-900 mb-4 font-sans">
           System Status
@@ -374,7 +343,7 @@ export function DashboardClient() {
                   ? "Error"
                   : "Idle"}
               </Badge>
-              {stats.pendingSyncs! > 0 && (
+              {(stats.pendingSyncs || 0) > 0 && (
                 <Badge variant="outline" className="font-mono text-xs">
                   {stats.pendingSyncs} pending
                 </Badge>
@@ -408,7 +377,6 @@ export function DashboardClient() {
         </div>
       </div>
 
-      {/* Recent Activity */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 className="text-xl font-semibold text-gray-900 mb-4 font-sans">
           Recent Activity

@@ -34,7 +34,7 @@ export default function RootLayout({
           "font-sans antialiased"
         )}
       >
-        <TooltipProvider delayDuration={0}>
+        <TooltipProvider delayDuration={100}>
           {children}
           <Toaster />
         </TooltipProvider>

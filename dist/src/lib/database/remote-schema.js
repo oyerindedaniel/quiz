@@ -68,11 +68,18 @@ exports.remoteQuestionsTable = (0, pg_core_1.pgTable)("questions", {
     isActive: (0, pg_core_1.boolean)("is_active").default(true),
     explanation: (0, pg_core_1.text)("explanation"),
 }, (table) => [
+    // Single column indexes
     (0, pg_core_1.index)("questions_subject_code_idx").on(table.subjectCode),
     (0, pg_core_1.index)("questions_question_order_idx").on(table.questionOrder),
     (0, pg_core_1.index)("questions_is_active_idx").on(table.isActive),
     (0, pg_core_1.index)("questions_created_at_idx").on(table.createdAt),
     (0, pg_core_1.index)("questions_subject_id_idx").on(table.subjectId),
+    // Composite indexes for common query patterns
+    (0, pg_core_1.index)("questions_subject_id_active_idx").on(table.subjectId, table.isActive),
+    (0, pg_core_1.index)("questions_subject_code_active_idx").on(table.subjectCode, table.isActive),
+    (0, pg_core_1.index)("questions_subject_id_order_idx").on(table.subjectId, table.questionOrder),
+    (0, pg_core_1.index)("questions_subject_code_order_idx").on(table.subjectCode, table.questionOrder),
+    // Unique constraint
     (0, pg_core_1.unique)("questions_subject_id_order_unique").on(table.subjectId, table.questionOrder),
 ]);
 exports.remoteQuizAttemptsTable = (0, pg_core_1.pgTable)("quiz_attempts", {

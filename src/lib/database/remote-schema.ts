@@ -97,11 +97,32 @@ export const remoteQuestionsTable = pgTable(
     explanation: pgText("explanation"),
   },
   (table) => [
+    // Single column indexes
     index("questions_subject_code_idx").on(table.subjectCode),
     index("questions_question_order_idx").on(table.questionOrder),
     index("questions_is_active_idx").on(table.isActive),
     index("questions_created_at_idx").on(table.createdAt),
     index("questions_subject_id_idx").on(table.subjectId),
+
+    // Composite indexes for common query patterns
+    index("questions_subject_id_active_idx").on(
+      table.subjectId,
+      table.isActive
+    ),
+    index("questions_subject_code_active_idx").on(
+      table.subjectCode,
+      table.isActive
+    ),
+    index("questions_subject_id_order_idx").on(
+      table.subjectId,
+      table.questionOrder
+    ),
+    index("questions_subject_code_order_idx").on(
+      table.subjectCode,
+      table.questionOrder
+    ),
+
+    // Unique constraint
     unique("questions_subject_id_order_unique").on(
       table.subjectId,
       table.questionOrder

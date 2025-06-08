@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { IPCDatabaseService } from "@/lib/services/ipc-database-service";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
+import { ImportSkeleton } from "@/components/skeletons/import-skeleton";
 import type { ImportResult } from "@/types/app";
 
 export function ImportClient() {
@@ -91,12 +92,7 @@ export function ImportClient() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div>
-        <span className="ml-3 text-gray-600 font-sans">Loading...</span>
-      </div>
-    );
+    return <ImportSkeleton />;
   }
 
   if (!admin) {

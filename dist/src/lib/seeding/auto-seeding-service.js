@@ -35,7 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AutoSeedingService = void 0;
 const csv_import_service_js_1 = require("../import/csv-import-service.js");
-const user_seeding_service_js_1 = require("../auth/user-seeding-service.js");
+const user_seeding_service_js_1 = require("./user-seeding-service.js");
 const err_js_1 = require("../../error/err.js");
 const fs = __importStar(require("fs/promises"));
 const path = __importStar(require("path"));

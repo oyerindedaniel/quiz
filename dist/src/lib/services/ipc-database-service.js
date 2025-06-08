@@ -16,6 +16,10 @@ class IPCDatabaseService {
         this.checkElectronAPI();
         return window.electronAPI.user.create(userData);
     }
+    async createStudent(studentData) {
+        this.checkElectronAPI();
+        return window.electronAPI.remote.createStudent(studentData);
+    }
     // Subject operations
     async findSubjectByCode(subjectCode) {
         this.checkElectronAPI();
@@ -26,10 +30,18 @@ class IPCDatabaseService {
         this.checkElectronAPI();
         return window.electronAPI.quiz.getQuestions(subjectId);
     }
+    async getProcessedQuestionsForSubject(subjectId) {
+        this.checkElectronAPI();
+        return window.electronAPI.quiz.getProcessedQuestions(subjectId);
+    }
     // Quiz attempt operations
     async findIncompleteAttempt(userId, subjectId) {
         this.checkElectronAPI();
         return window.electronAPI.quiz.findIncompleteAttempt(userId, subjectId);
+    }
+    async hasSubmittedAttempt(userId, subjectId) {
+        this.checkElectronAPI();
+        return window.electronAPI.quiz.hasSubmittedAttempt(userId, subjectId);
     }
     async createQuizAttempt(attemptData) {
         this.checkElectronAPI();
@@ -185,6 +197,13 @@ class IPCDatabaseService {
         return window.electronAPI.sync.syncQuestions(options);
     }
     /**
+     * Sync users from remote DB to local DB
+     */
+    async syncUsers(options) {
+        this.checkElectronAPI();
+        return window.electronAPI.sync.syncUsers(options);
+    }
+    /**
      * Bulk create questions directly to remote database
      */
     async remoteBulkCreateQuestions(questions) {
@@ -221,6 +240,20 @@ class IPCDatabaseService {
     async changeUserPin(studentCode, newPin) {
         this.checkElectronAPI();
         return window.electronAPI.admin.changeUserPin(studentCode, newPin);
+    }
+    /**
+     * Sync local database from remote (only if local DB is empty)
+     */
+    async syncLocalDB() {
+        this.checkElectronAPI();
+        return window.electronAPI.sync.syncLocalDB();
+    }
+    /**
+     * Check if local database is empty
+     */
+    async isLocalDBEmpty() {
+        this.checkElectronAPI();
+        return window.electronAPI.sync.isLocalDBEmpty();
     }
 }
 exports.IPCDatabaseService = IPCDatabaseService;

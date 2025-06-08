@@ -12,14 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+
 import {
   Dialog,
   DialogContent,
@@ -32,6 +25,7 @@ import {
 import { useAdminData } from "@/hooks/use-admin-data";
 import { useFilteredData } from "@/hooks/use-filtered-data";
 import { useConnectivity } from "@/hooks/use-connectivity";
+import { UsersSkeleton } from "@/components/skeletons/users-skeleton";
 import { format } from "date-fns";
 import {
   Search,
@@ -68,6 +62,7 @@ export function UsersClient() {
   const {
     data: users,
     isLoading,
+    isRefetching,
     error,
     refresh,
   } = useAdminData((ipcDb) => ipcDb.getAllUsers(), {
@@ -263,12 +258,7 @@ export function UsersClient() {
   }, [users]);
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div>
-        <span className="ml-3 text-gray-600 font-sans">Loading users...</span>
-      </div>
-    );
+    return <UsersSkeleton />;
   }
 
   return (
@@ -322,15 +312,23 @@ export function UsersClient() {
             Enable All
           </Button>
 
+          {isRefetching && (
+            <div className="flex items-center text-brand-600">
+              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+              <span className="text-sm font-sans">Updating...</span>
+            </div>
+          )}
           <Button
             onClick={refresh}
             variant="outline"
             size="sm"
-            disabled={isLoading}
+            disabled={isLoading || isRefetching}
             className="font-sans"
           >
             <RefreshCw
-              className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+              className={`w-4 h-4 mr-2 ${
+                isLoading || isRefetching ? "animate-spin" : ""
+              }`}
             />
             Refresh
           </Button>
@@ -444,30 +442,52 @@ export function UsersClient() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+      <div className="bg-white rounded-lg shadow-md border border-gray-200">
         <div className="p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900 font-sans">
             Students ({filteredUsers.length})
           </h2>
         </div>
         <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="font-sans">Student</TableHead>
-                <TableHead className="font-sans">Status</TableHead>
-                <TableHead className="font-sans">Class</TableHead>
-                <TableHead className="font-sans">Gender</TableHead>
-                <TableHead className="font-sans">Last Login</TableHead>
-                <TableHead className="font-sans">Quiz Attempts</TableHead>
-                <TableHead className="font-sans">Subjects</TableHead>
-                <TableHead className="font-sans">Best Score</TableHead>
-                <TableHead className="font-sans">Avg Score</TableHead>
-                <TableHead className="font-sans">Recent Activity</TableHead>
-                <TableHead className="font-sans">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <table className="w-full min-w-max">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Student
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Status
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Class
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Gender
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Last Login
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Quiz Attempts
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Subjects
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Best Score
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Avg Score
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Recent Activity
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-900 font-sans">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
               {filteredUsers.map((user) => {
                 const userStats = calculateUserStats(user);
                 const recentAttempt = user.quizAttempts.sort(
@@ -477,8 +497,8 @@ export function UsersClient() {
                 )[0];
 
                 return (
-                  <TableRow key={user.id}>
-                    <TableCell>
+                  <tr key={user.id} className="hover:bg-gray-50">
+                    <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                       <div className="flex flex-col">
                         <span className="font-medium text-gray-900 font-sans">
                           {user.firstName} {user.lastName}
@@ -487,40 +507,42 @@ export function UsersClient() {
                           {user.studentCode}
                         </span>
                       </div>
-                    </TableCell>
-                    <TableCell>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                       <Badge variant="outline" className="font-mono">
                         {user.isActive ? "Active" : "Inactive"}
                       </Badge>
-                    </TableCell>
-                    <TableCell>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                       <Badge variant="outline" className="font-mono">
                         {user.className}
                       </Badge>
-                    </TableCell>
-                    <TableCell>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                       <span className="text-sm text-gray-600 font-sans">
                         {user.gender}
                       </span>
-                    </TableCell>
-                    <TableCell>{formatLastLogin(user.lastLogin)}</TableCell>
-                    <TableCell>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900 font-sans">
+                      {formatLastLogin(user.lastLogin)}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                       <div className="flex items-center space-x-2">
                         <Target className="w-4 h-4 text-gray-400" />
                         <span className="font-mono text-sm">
                           {userStats.totalAttempts}
                         </span>
                       </div>
-                    </TableCell>
-                    <TableCell>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                       <div className="flex items-center space-x-2">
                         <BookOpen className="w-4 h-4 text-gray-400" />
                         <span className="font-mono text-sm">
                           {userStats.totalSubjects}
                         </span>
                       </div>
-                    </TableCell>
-                    <TableCell>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                       {userStats.totalAttempts > 0 ? (
                         <Badge
                           className={`${getScoreBadgeColor(
@@ -534,8 +556,8 @@ export function UsersClient() {
                           No attempts
                         </span>
                       )}
-                    </TableCell>
-                    <TableCell>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                       {userStats.totalAttempts > 0 ? (
                         <Badge
                           className={`${getScoreBadgeColor(
@@ -549,8 +571,8 @@ export function UsersClient() {
                           No attempts
                         </span>
                       )}
-                    </TableCell>
-                    <TableCell>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                       {recentAttempt ? (
                         <div className="flex flex-col">
                           <span className="text-sm font-medium text-gray-900 font-sans">
@@ -574,8 +596,8 @@ export function UsersClient() {
                           No recent activity
                         </span>
                       )}
-                    </TableCell>
-                    <TableCell>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900 font-sans">
                       <div className="flex items-center space-x-2">
                         <Button
                           onClick={() => handleToggleUser(user)}
@@ -604,12 +626,12 @@ export function UsersClient() {
                           Change PIN
                         </Button>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 );
               })}
-            </TableBody>
-          </Table>
+            </tbody>
+          </table>
         </div>
       </div>
 

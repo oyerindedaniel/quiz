@@ -14,6 +14,13 @@ import type {
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { isElectron } from "../../utils/lib.js";
 import { app } from "electron";
+import { RemoteDatabaseService } from "./remote-database-service.js";
+import { AutoSeedingService } from "../seeding/auto-seeding-service.js";
+import type { LocalProcessedQuestion } from "../../types/app.js";
+
+interface CountResult {
+  count: number;
+}
 
 export class LocalDatabaseService {
   private static instance: LocalDatabaseService;
@@ -107,6 +114,22 @@ export class LocalDatabaseService {
     });
   }
 
+  async updateUser(
+    userId: string,
+    userData: Partial<Omit<NewUser, "id" | "createdAt">>
+  ): Promise<void> {
+    const db = this.getDb();
+    const now = new Date().toISOString();
+
+    await db
+      .update(localSchema.users)
+      .set({
+        ...userData,
+        updatedAt: now,
+      })
+      .where(eq(localSchema.users.id, userId));
+  }
+
   // Subject operations
   async findSubjectByCode(subjectCode: string): Promise<Subject | null> {
     const db = this.getDb();
@@ -174,6 +197,26 @@ export class LocalDatabaseService {
     return attempts[0] || null;
   }
 
+  async hasSubmittedAttempt(
+    userId: string,
+    subjectId: string
+  ): Promise<boolean> {
+    const db = this.getDb();
+    const attempts = await db
+      .select()
+      .from(localSchema.quizAttempts)
+      .where(
+        and(
+          eq(localSchema.quizAttempts.userId, userId),
+          eq(localSchema.quizAttempts.subjectId, subjectId),
+          eq(localSchema.quizAttempts.submitted, true)
+        )
+      )
+      .limit(1);
+
+    return attempts.length > 0;
+  }
+
   async createQuizAttempt(
     attemptData: Omit<NewQuizAttempt, "startedAt" | "updatedAt">
   ): Promise<string> {
@@ -228,11 +271,10 @@ export class LocalDatabaseService {
       .set({
         answers: JSON.stringify(currentAnswers),
         updatedAt: new Date().toISOString(),
+        synced: false,
+        syncAttemptedAt: null,
       })
-      .where(eq(localSchema.quizAttempts.id, attemptId))
-      .returning();
-
-    console.log({ updatedAttempt });
+      .where(eq(localSchema.quizAttempts.id, attemptId));
   }
 
   async submitQuizAttempt(
@@ -285,6 +327,42 @@ export class LocalDatabaseService {
       .orderBy(localSchema.questions.questionOrder);
   }
 
+  async getProcessedQuestionsForSubject(
+    subjectId: string
+  ): Promise<LocalProcessedQuestion> {
+    const db = this.getDb();
+
+    const questionItems = await db
+      .select()
+      .from(localSchema.questions)
+      .where(
+        and(
+          eq(localSchema.questions.subjectId, subjectId),
+          eq(localSchema.questions.isActive, true)
+        )
+      )
+      .orderBy(localSchema.questions.questionOrder);
+
+    const answerableQuestions = await db
+      .select()
+      .from(localSchema.questions)
+      .where(
+        and(
+          eq(localSchema.questions.subjectId, subjectId),
+          eq(localSchema.questions.isActive, true),
+          sql`${localSchema.questions.text} NOT LIKE '[PASSAGE]%'`,
+          sql`${localSchema.questions.text} NOT LIKE '[HEADER]%'`,
+          sql`${localSchema.questions.text} NOT LIKE '[IMAGE]%'`
+        )
+      );
+
+    return {
+      questionItems,
+      actualQuestions: answerableQuestions,
+      totalQuestions: answerableQuestions.length,
+    };
+  }
+
   async createQuestion(
     questionData: Omit<NewQuestion, "createdAt" | "updatedAt">
   ): Promise<void> {
@@ -313,7 +391,8 @@ export class LocalDatabaseService {
           eq(localSchema.questions.isActive, true),
 
           sql`${localSchema.questions.text} NOT LIKE '[PASSAGE]%'`,
-          sql`${localSchema.questions.text} NOT LIKE '[HEADER]%'`
+          sql`${localSchema.questions.text} NOT LIKE '[HEADER]%'`,
+          sql`${localSchema.questions.text} NOT LIKE '[IMAGE]%'`
         )
       );
 
@@ -344,44 +423,162 @@ export class LocalDatabaseService {
 
     const db = this.getDb();
     const now = new Date().toISOString();
+    const CHUNK_SIZE = 500;
+    let totalCreated = 0;
 
     try {
-      const result = await db.transaction(async (tx) => {
-        const questionsWithTimestamps = questions.map((questionData) => ({
-          ...questionData,
-          createdAt: now,
-          updatedAt: now,
-        }));
+      const questionsWithTimestamps = questions.map((questionData) => ({
+        ...questionData,
+        createdAt: now,
+        updatedAt: now,
+      }));
 
-        await tx.insert(localSchema.questions).values(questionsWithTimestamps);
+      for (let i = 0; i < questionsWithTimestamps.length; i += CHUNK_SIZE) {
+        const chunk = questionsWithTimestamps.slice(i, i + CHUNK_SIZE);
 
-        return { created: questions.length };
-      });
+        try {
+          const result = db.transaction(() => {
+            db.insert(localSchema.questions).values(chunk).run();
+            return { created: chunk.length };
+          });
 
-      console.log(`Bulk created ${result.created} questions successfully`);
+          totalCreated += result.created;
+
+          console.log(
+            `Bulk created chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${
+              result.created
+            } questions (Total: ${totalCreated}/${questions.length})`
+          );
+        } catch (chunkError) {
+          console.error(
+            `Failed to create chunk starting at index ${i}:`,
+            chunkError
+          );
+          throw chunkError;
+        }
+      }
+
+      console.log(
+        `Bulk created ${totalCreated} questions successfully in ${Math.ceil(
+          questions.length / CHUNK_SIZE
+        )} chunks`
+      );
 
       return {
         success: true,
-        created: result.created,
+        created: totalCreated,
       };
     } catch (error) {
       console.error("Bulk question creation error:", error);
       return {
         success: false,
-        created: 0,
+        created: totalCreated,
         error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
 
   /**
-   * Execute a function within a transaction
+   * Execute a function within a transaction (synchronous for better-sqlite3)
    */
-  async transaction<T>(
-    callback: (tx: BetterSQLite3Database<typeof localSchema>) => Promise<T>
-  ): Promise<T> {
+  transaction<T>(
+    callback: (tx: BetterSQLite3Database<typeof localSchema>) => T
+  ): T {
     const db = this.getDb();
-    return await db.transaction(callback);
+    return db.transaction(callback);
+  }
+
+  /**
+   * Synchronous methods for use within transactions
+   * These are needed for the transaction-based sync operations
+   */
+
+  /**
+   * Synchronous version of deleteQuestionsBySubjectCode for use in transactions
+   */
+  deleteQuestionsBySubjectCodeSync(subjectCode: string): number {
+    const db = this.getDb();
+    const result = db
+      .delete(localSchema.questions)
+      .where(eq(localSchema.questions.subjectCode, subjectCode))
+      .returning({ id: localSchema.questions.id })
+      .run();
+
+    return result.changes;
+  }
+
+  /**
+   * Synchronous version of bulkCreateQuestions for use in transactions
+   */
+  bulkCreateQuestionsSync(
+    questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
+  ): void {
+    if (questions.length === 0) return;
+
+    const db = this.getDb();
+    const now = new Date().toISOString();
+    const CHUNK_SIZE = 500;
+
+    const questionsWithTimestamps = questions.map((q) => ({
+      ...q,
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+    for (let i = 0; i < questionsWithTimestamps.length; i += CHUNK_SIZE) {
+      const chunk = questionsWithTimestamps.slice(i, i + CHUNK_SIZE);
+      db.insert(localSchema.questions).values(chunk).run();
+    }
+  }
+
+  /**
+   * Synchronous version of updateQuestion for use in transactions
+   */
+  updateQuestionSync(
+    questionId: string,
+    questionData: Partial<Omit<NewQuestion, "id" | "createdAt">>
+  ): void {
+    const db = this.getDb();
+    const now = new Date().toISOString();
+
+    const updateData = {
+      ...questionData,
+      updatedAt: now,
+    };
+
+    db.update(localSchema.questions)
+      .set(updateData)
+      .where(eq(localSchema.questions.id, questionId))
+      .run();
+  }
+
+  /**
+   * Synchronous version of updateSubjectQuestionCount for use in transactions
+   */
+  updateSubjectQuestionCountSync(subjectCode: string): void {
+    const db = this.getDb();
+
+    const countResult = db
+      .select({ count: sql<number>`count(*)` })
+      .from(localSchema.questions)
+      .where(
+        and(
+          eq(localSchema.questions.subjectCode, subjectCode),
+          eq(localSchema.questions.isActive, true)
+        )
+      )
+      .get();
+
+    const questionCount = countResult?.count || 0;
+    const now = new Date().toISOString();
+
+    db.update(localSchema.subjects)
+      .set({
+        totalQuestions: questionCount,
+        updatedAt: now,
+      })
+      .where(eq(localSchema.subjects.subjectCode, subjectCode))
+      .run();
   }
 
   async findQuestionBySubjectCodeAndOrder(
@@ -692,6 +889,7 @@ export class LocalDatabaseService {
    */
   private getDbPath(): string {
     const userDataPath = app.getPath("userData");
+    console.log("userDataPath", userDataPath);
     return `${userDataPath}/quiz_app.db`;
   }
 
@@ -713,6 +911,238 @@ export class LocalDatabaseService {
     } catch (error) {
       console.error("LocalDatabaseService: Cleanup failed:", error);
       throw error;
+    }
+  }
+
+  /**
+   * Sync local database from remote - follows the same pattern as pullFreshData in sync-engine.ts
+   * Only syncs if local database is empty, tries remote first, falls back to auto-seeding
+   */
+  async syncLocalDBFromRemote(): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    totalSynced?: number;
+  }> {
+    try {
+      console.log("LocalDatabaseService: Starting syncLocalDBFromRemote");
+
+      const userCount = await this.executeRawSQL(
+        "SELECT COUNT(*) as count FROM users"
+      );
+      const subjectCount = await this.executeRawSQL(
+        "SELECT COUNT(*) as count FROM subjects"
+      );
+
+      const hasUsers = (userCount[0] as CountResult)?.count > 0;
+      const hasSubjects = (subjectCount[0] as CountResult)?.count > 0;
+
+      if (hasUsers && hasSubjects) {
+        console.log(
+          "LocalDatabaseService: Local database already populated, skipping sync"
+        );
+        return {
+          success: false,
+          message: "Local database is not empty. Sync skipped.",
+          error: "Database already contains data",
+          totalSynced: 0,
+        };
+      }
+
+      let totalSynced = 0;
+
+      let remoteDb: RemoteDatabaseService | null = null;
+      let remoteConnected = false;
+
+      try {
+        if (process.env.NEON_DATABASE_URL) {
+          remoteDb = RemoteDatabaseService.getInstance();
+          await remoteDb.initialize(process.env.NEON_DATABASE_URL);
+          remoteConnected = await remoteDb.checkConnection();
+        }
+      } catch (error) {
+        console.warn(
+          "LocalDatabaseService: Remote database unavailable:",
+          error instanceof Error ? error.message : "Unknown error"
+        );
+      }
+
+      if (remoteConnected && remoteDb) {
+        try {
+          console.log(
+            "LocalDatabaseService: Remote connected, performing remote data pull"
+          );
+
+          const syncData = await remoteDb.pullLatestData();
+
+          console.log(
+            `LocalDatabaseService: Retrieved ${syncData.users.length} users, ${syncData.subjects.length} subjects, ${syncData.questions.length} questions from remote`
+          );
+
+          // Insert users
+          for (const user of syncData.users) {
+            try {
+              const localUser = {
+                id: user.id,
+                name: user.name,
+                studentCode: user.studentCode,
+                passwordHash: user.passwordHash,
+                class: user.class,
+                gender: user.gender,
+                createdAt: user.createdAt.toISOString(),
+                updatedAt: user.updatedAt.toISOString(),
+                lastSynced: new Date().toISOString(),
+                isActive: user.isActive,
+                lastLogin: user.lastLogin?.toISOString() || null,
+              };
+
+              await this.createUser(localUser);
+              totalSynced++;
+            } catch (error) {
+              console.warn(
+                "LocalDatabaseService: Failed to create user:",
+                user.studentCode,
+                error
+              );
+            }
+          }
+
+          // Insert subjects
+          for (const subject of syncData.subjects) {
+            try {
+              const localSubject = {
+                id: subject.id,
+                name: subject.name,
+                subjectCode: subject.subjectCode,
+                description: subject.description,
+                class: subject.class,
+                totalQuestions: subject.totalQuestions,
+                createdAt: subject.createdAt.toISOString(),
+                updatedAt: subject.updatedAt.toISOString(),
+                isActive: subject.isActive,
+                category: subject.category || null,
+                academicYear: subject.academicYear || null,
+              };
+
+              await this.createSubject(localSubject);
+              totalSynced++;
+            } catch (error) {
+              console.warn(
+                "LocalDatabaseService: Failed to create subject:",
+                subject.subjectCode,
+                error
+              );
+            }
+          }
+
+          // Insert questions
+          for (const question of syncData.questions) {
+            try {
+              const localQuestion = {
+                id: question.id,
+                subjectId: question.subjectId,
+                subjectCode: question.subjectCode,
+                text: question.text,
+                options:
+                  typeof question.options === "string"
+                    ? question.options
+                    : JSON.stringify(question.options),
+                answer: question.answer,
+                questionOrder: question.questionOrder,
+                createdAt: question.createdAt.toISOString(),
+                updatedAt: question.updatedAt.toISOString(),
+                explanation: question.explanation,
+                isActive: question.isActive,
+              };
+
+              await this.createQuestion(localQuestion);
+              totalSynced++;
+            } catch (error) {
+              console.warn(
+                "LocalDatabaseService: Failed to create question:",
+                question.id,
+                error
+              );
+            }
+          }
+
+          console.log(
+            `LocalDatabaseService: Successfully synced ${totalSynced} records from remote`
+          );
+
+          return {
+            success: true,
+            message: "Local database synchronized successfully from remote",
+            totalSynced,
+          };
+        } catch (remoteError) {
+          console.error(
+            "LocalDatabaseService: Remote data pull failed, falling back to local seeding:",
+            remoteError
+          );
+        }
+      } else {
+        console.log(
+          "LocalDatabaseService: Remote database not available, using local seeding"
+        );
+      }
+
+      console.log(
+        "LocalDatabaseService: Performing automatic local database seeding..."
+      );
+
+      if (!isElectron()) {
+        return {
+          success: false,
+          error: "Local seeding requires Electron environment",
+          totalSynced: 0,
+        };
+      }
+
+      try {
+        const seedResult = await AutoSeedingService.performAutoSeeding();
+
+        if (seedResult.success) {
+          console.log(
+            `LocalDatabaseService: Successfully seeded ${seedResult.totalRecords} records locally`
+          );
+          return {
+            success: true,
+            message:
+              "Local database populated using local seeding (offline mode)",
+            totalSynced: seedResult.totalRecords,
+          };
+        } else {
+          console.error(
+            "LocalDatabaseService: Local seeding failed:",
+            seedResult.error
+          );
+          return {
+            success: false,
+            error: `Local seeding failed: ${seedResult.error}`,
+            totalSynced: 0,
+          };
+        }
+      } catch (seedError) {
+        console.error("LocalDatabaseService: Local seeding failed:", seedError);
+        return {
+          success: false,
+          error: `Local seeding failed: ${
+            seedError instanceof Error ? seedError.message : "Unknown error"
+          }`,
+          totalSynced: 0,
+        };
+      }
+    } catch (error) {
+      console.error(
+        "LocalDatabaseService: syncLocalDBFromRemote failed:",
+        error
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown sync error",
+        totalSynced: 0,
+      };
     }
   }
 }

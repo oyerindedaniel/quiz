@@ -121,6 +121,7 @@ export function EnhancedQuizContainer() {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       const session = await authService.getCurrentSession();
+
       if (!session.isAuthenticated || !session.user || !session.subject) {
         router.push("/");
         return;
@@ -135,14 +136,6 @@ export function EnhancedQuizContainer() {
       const processedData = QuestionProcessor.processQuestions(
         quizSession.questions
       );
-
-      console.log("processedData", {
-        questionItems: processedData.questionItems,
-        questionItemsLength: processedData.questionItems.length,
-        actualQuestions: processedData.actualQuestions,
-        actualQuestionsLength: processedData.actualQuestions.length,
-        totalQuestions: processedData.totalQuestions,
-      });
 
       const validation = QuestionProcessor.validateQuestionStructure(
         processedData.questionItems
@@ -191,12 +184,30 @@ export function EnhancedQuizContainer() {
         phase: "active",
       }));
     } catch (error) {
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        error:
-          error instanceof Error ? error.message : "Failed to initialize quiz",
-      }));
+      console.error("Failed to initialize quiz:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to initialize quiz";
+
+      console.log("she did crash");
+
+      if (
+        errorMessage.includes("already completed") ||
+        errorMessage.includes("Retakes are not allowed")
+      ) {
+        setState((prev) => ({
+          ...prev,
+          isLoading: false,
+          error:
+            "You have already completed this quiz. Please contact your instructor if you need to retake it.",
+          phase: "completed",
+        }));
+      } else {
+        setState((prev) => ({
+          ...prev,
+          isLoading: false,
+          error: errorMessage,
+        }));
+      }
     }
   };
 
@@ -216,7 +227,7 @@ export function EnhancedQuizContainer() {
       const item = questionItems[i];
 
       if (item.type === "question") {
-        const isAnswered = item.question.id in answers;
+        const isAnswered = controller.isQuestionAnswered(item.question.id);
         if (!isAnswered) {
           controller.syncCurrentQuestionIndex(item.question.id);
           return i;
@@ -228,7 +239,9 @@ export function EnhancedQuizContainer() {
           questionItems[nextIndex].type === "question"
         ) {
           const pairedQuestion = questionItems[nextIndex];
-          const isAnswered = pairedQuestion.question.id in answers;
+          const isAnswered = controller.isQuestionAnswered(
+            pairedQuestion.question.id
+          );
           if (!isAnswered) {
             controller.syncCurrentQuestionIndex(pairedQuestion.question.id);
             return i; // Return header/image index
@@ -373,6 +386,47 @@ export function EnhancedQuizContainer() {
     router.push("/");
   };
 
+  const handleQuestionNavigation = (questionIndex: number) => {
+    if (!state.processedData || !state.quizController) return;
+
+    // questionIndex is 0-based from the progress bar
+    // Find the actual question from actualQuestions array
+    const targetQuestion = state.processedData.actualQuestions[questionIndex];
+    if (!targetQuestion || targetQuestion.type !== "question") return;
+
+    // Find the question item index in the questionItems array
+    const targetQuestionItemIndex = state.processedData.questionItems.findIndex(
+      (item, index) => {
+        if (
+          item.type === "question" &&
+          item.question.id === targetQuestion.question.id
+        ) {
+          return true;
+        }
+        // Check if this is a header/image paired with the target question
+        if (
+          (item.type === "header" || item.type === "image") &&
+          index + 1 < state.processedData!.questionItems.length &&
+          state.processedData!.questionItems[index + 1].type === "question" &&
+          state.processedData!.questionItems[index + 1].question.id ===
+            targetQuestion.question.id
+        ) {
+          return true;
+        }
+        return false;
+      }
+    );
+
+    if (targetQuestionItemIndex !== -1) {
+      state.quizController.goToQuestion(questionIndex);
+
+      setState((prev) => ({
+        ...prev,
+        currentIndex: targetQuestionItemIndex,
+      }));
+    }
+  };
+
   const handleTimerTick = useCallback(
     (remainingTime: number) => {
       // Auto-submit when time expires
@@ -456,9 +510,9 @@ export function EnhancedQuizContainer() {
   }, [state.processedData, state.currentIndex]);
 
   // Answer statistics
-  const { answeredCount, percentage } = useMemo(() => {
+  const { answeredCount, percentage, questionsAnswered } = useMemo(() => {
     if (!state.processedData) {
-      return { answeredCount: 0, percentage: 0 };
+      return { answeredCount: 0, percentage: 0, questionsAnswered: [] };
     }
 
     const count = QuestionProcessor.countAnsweredQuestions(
@@ -469,7 +523,19 @@ export function EnhancedQuizContainer() {
       (count / state.processedData.totalQuestions) * 100
     );
 
-    return { answeredCount: count, percentage: percent };
+    // Create array of answered question indices (zero-based)
+    const answered: number[] = [];
+    state.processedData.actualQuestions.forEach((questionItem, index) => {
+      if (state.answers[questionItem.question.id]) {
+        answered.push(index);
+      }
+    });
+
+    return {
+      answeredCount: count,
+      percentage: percent,
+      questionsAnswered: answered,
+    };
   }, [state.processedData, state.answers]);
 
   if (state.isLoading) {
@@ -566,6 +632,8 @@ export function EnhancedQuizContainer() {
             totalQuestions={state.processedData.totalQuestions}
             answeredQuestions={answeredCount}
             percentage={percentage}
+            questionsAnswered={questionsAnswered}
+            onQuestionClick={handleQuestionNavigation}
           />
         </div>
       </div>

@@ -16,9 +16,10 @@ import { IPCDatabaseService } from "@/lib/services/ipc-database-service";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
 import { useAdminData } from "@/hooks/use-admin-data";
 import { useFilteredData } from "@/hooks/use-filtered-data";
+import { UserCredentialsSkeleton } from "@/components/skeletons/user-credentials-skeleton";
 import { downloadCSV, csvExtractors } from "@/utils/download";
 import { toast } from "sonner";
-import { Eye, EyeOff, Copy, Download, Search } from "lucide-react";
+import { Eye, EyeOff, Copy, Download, Search, RefreshCw } from "lucide-react";
 import type { Class } from "@/types/app";
 
 export function UserCredentialsClient() {
@@ -74,10 +75,13 @@ export function UserCredentialsClient() {
 
   const copyAllCredentials = async () => {
     const credentialsText = filteredCredentials
-      .map(
-        (cred) =>
-          `Name: ${cred.name}\nStudent Code: ${cred.studentCode}\nPIN: ${cred.pin}\nClass: ${cred.class}\nGender: ${cred.gender}\n`
-      )
+      .map((cred) => {
+        const pinText = cred.pin.startsWith("[HIDDEN")
+          ? "PIN: [Hidden - Remote User]"
+          : `PIN: ${cred.pin}`;
+
+        return `Name: ${cred.name}\nStudent Code: ${cred.studentCode}\n${pinText}\nClass: ${cred.class}\nGender: ${cred.gender}\n`;
+      })
       .join("\n---\n\n");
 
     await copyToClipboard(credentialsText, "All credentials");
@@ -98,12 +102,7 @@ export function UserCredentialsClient() {
   const isLoading = authLoading || dataLoading;
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div>
-        <span className="ml-3 text-gray-600 font-sans">Loading...</span>
-      </div>
-    );
+    return <UserCredentialsSkeleton />;
   }
 
   if (!admin) {
@@ -217,6 +216,18 @@ export function UserCredentialsClient() {
               <Download className="w-4 h-4" />
               Download CSV
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refresh}
+              disabled={dataLoading}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw
+                className={`w-4 h-4 ${dataLoading ? "animate-spin" : ""}`}
+              />
+              {dataLoading ? "Refreshing..." : "Refresh"}
+            </Button>
           </div>
         </div>
 
@@ -282,9 +293,25 @@ export function UserCredentialsClient() {
                   </td>
                   <td className="py-3 px-4 text-sm font-mono">
                     {showPins ? (
-                      <span className="bg-yellow-100 px-2 py-1 rounded border">
-                        {credential.pin}
-                      </span>
+                      credential.pin.startsWith("[HIDDEN") ? (
+                        <div className="flex items-center gap-2">
+                          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded border text-xs">
+                            Remote User
+                          </span>
+                          <span className="text-gray-500 text-xs">
+                            PIN not visible
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="bg-yellow-100 px-2 py-1 rounded border">
+                            {credential.pin}
+                          </span>
+                          <span className="bg-green-100 text-green-800 px-1 py-0.5 rounded text-xs">
+                            Seeded
+                          </span>
+                        </div>
+                      )
                     ) : (
                       <span className="text-gray-400">••••••</span>
                     )}
@@ -317,11 +344,31 @@ export function UserCredentialsClient() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => copyToClipboard(credential.pin, "PIN")}
+                          onClick={() => {
+                            if (credential.pin.startsWith("[HIDDEN")) {
+                              toast.error("Cannot copy PIN", {
+                                description:
+                                  "PIN is not visible for remotely created users",
+                              });
+                            } else {
+                              copyToClipboard(credential.pin, "PIN");
+                            }
+                          }}
                           className="h-8 px-2"
-                          title="Copy PIN"
+                          title={
+                            credential.pin.startsWith("[HIDDEN")
+                              ? "PIN not available for remote users"
+                              : "Copy PIN"
+                          }
+                          disabled={credential.pin.startsWith("[HIDDEN")}
                         >
-                          <Copy className="w-3 h-3 text-yellow-600" />
+                          <Copy
+                            className={`w-3 h-3 ${
+                              credential.pin.startsWith("[HIDDEN")
+                                ? "text-gray-400"
+                                : "text-yellow-600"
+                            }`}
+                          />
                         </Button>
                       )}
                     </div>
@@ -346,6 +393,21 @@ export function UserCredentialsClient() {
           <strong>Security Notice:</strong> This page displays sensitive login
           information. Ensure you're in a secure environment when viewing PINs
           and sharing credentials with students only through secure channels.
+        </AlertDescription>
+      </Alert>
+
+      <Alert className="border-blue-200 bg-blue-50 text-blue-800">
+        <AlertDescription className="font-sans">
+          <strong>User Types:</strong>
+          <span className="bg-green-100 text-green-800 px-1 py-0.5 rounded text-xs ml-2 mr-1">
+            Seeded
+          </span>
+          users are bulk-imported with visible PINs.
+          <span className="bg-blue-100 text-blue-800 px-1 py-0.5 rounded text-xs ml-2 mr-1">
+            Remote
+          </span>
+          users are individually created via admin panel with hidden PINs for
+          security.
         </AlertDescription>
       </Alert>
     </div>

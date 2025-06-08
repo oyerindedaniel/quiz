@@ -25,6 +25,8 @@ export const subjectsTable = sqliteTable("subjects", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
   isActive: integer("is_active", { mode: "boolean" }).default(true),
+  category: text("category"),
+  academicYear: text("academic_year"),
 });
 
 export const questionsTable = sqliteTable("questions", {

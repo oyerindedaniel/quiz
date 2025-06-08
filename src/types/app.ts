@@ -43,10 +43,11 @@ import type {
   Gender,
   Class,
   AdminRole,
+  RemoteQuestion,
 } from "@/lib/database/remote-schema";
 import { SyncTrigger } from "@/lib/sync/sync-engine";
 
-// Generic Result Types - Base patterns for common result structures
+// Result Types
 export interface BaseResult {
   success: boolean;
   error?: string;
@@ -180,16 +181,6 @@ export interface SyncOperation<T = Record<string, unknown>> {
   timestamp: string;
 }
 
-export interface SyncResult {
-  success: boolean;
-  pushedRecords?: number;
-  pulledRecords?: number;
-  conflicts?: SyncConflict<Record<string, unknown>>[];
-  error?: string;
-  duration?: number;
-  note?: string; // Additional information about the sync operation
-}
-
 export interface SyncData {
   users: User[];
   subjects: Subject[];
@@ -307,6 +298,25 @@ export interface RepairResult {
   error?: string;
 }
 
+export interface RawQuizAttemptResult {
+  id: string;
+  user_id: string;
+  subject_id: string;
+  answers: string | null;
+  score: number | null;
+  total_questions: number;
+  submitted: number; // SQLite boolean as integer
+  synced: number; // SQLite boolean as integer
+  started_at: string;
+  submitted_at: string | null;
+  updated_at: string;
+  sync_attempted_at: string | null;
+  sync_error: string | null;
+  session_duration: number | null;
+  elapsed_time: number;
+  last_active_at: string | null;
+}
+
 // Electron API Types
 export interface DatabaseAPI {
   execute: (sql: string, params: unknown[]) => Promise<unknown[]>;
@@ -318,6 +328,7 @@ export interface DatabaseAPI {
 // Quiz API Types
 export interface QuizAPI {
   getQuestions: (subjectId: string) => Promise<Question[]>;
+  getProcessedQuestions: (subjectId: string) => Promise<LocalProcessedQuestion>;
   findIncompleteAttempt: (
     userId: string,
     subjectId: string
@@ -340,6 +351,7 @@ export interface QuizAPI {
   bulkCreateQuestions: (
     questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
   ) => Promise<QuestionCreationResult>;
+  hasSubmittedAttempt: (userId: string, subjectId: string) => Promise<boolean>;
   deleteQuizAttempts: (
     studentCode: string,
     subjectCode: string
@@ -385,19 +397,17 @@ export interface SyncAPI {
   syncQuestions: (options?: {
     replaceExisting?: boolean;
     subjectCodes?: string[];
-  }) => Promise<{
+  }) => Promise<QuestionSyncResult>;
+  syncUsers: (options?: {
+    replaceExisting?: boolean;
+  }) => Promise<UserSyncResult>;
+  syncLocalDB: () => Promise<{
     success: boolean;
-    questionsPulled?: number;
-    subjectsSynced?: number;
+    message?: string;
     error?: string;
-    details?: {
-      newSubjects: number;
-      updatedQuestions: number;
-      newQuestions: number;
-      skippedQuestions: number;
-      replacedSubjects: number;
-    };
+    totalSynced?: number;
   }>;
+  isLocalDBEmpty: () => Promise<boolean>;
 }
 
 export interface SeedAPI {
@@ -479,6 +489,9 @@ export interface RemoteAPI {
   bulkCreateQuestions: (
     questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
   ) => Promise<QuestionCreationResult>;
+  createStudent: (
+    studentData: Omit<NewUser, "createdAt" | "updatedAt">
+  ) => Promise<void>;
 }
 
 export interface ElectronAPI {
@@ -528,17 +541,23 @@ export interface QuestionItem {
   imagePosition?: ImagePosition;
 }
 
-export interface ProcessedQuizData {
-  questionItems: QuestionItem[];
-  actualQuestions: QuestionItem[]; // Only questions that can be answered
-  totalQuestions: number; // Count of answerable questions
+// For in app question processing
+export interface ProcessedQuestionSet<T> {
+  questionItems: T[];
+  actualQuestions: T[];
+  totalQuestions: number;
 }
+
+export type ProcessedQuizData = ProcessedQuestionSet<QuestionItem>;
+export type LocalProcessedQuestion = ProcessedQuestionSet<Question>;
+export type RemoteProcessedQuestion = ProcessedQuestionSet<RemoteQuestion>;
 
 // Quiz Flow Types
 export interface QuizSession {
   attemptId: string;
   questions: Question[];
   currentQuestionIndex: number;
+  totalQuestions?: number;
   answers: Record<string, string>;
   isResume: boolean;
   elapsedTime?: number; // Accumulated time spent in seconds
@@ -577,6 +596,38 @@ export interface SyncConflict<T = Record<string, unknown>> {
   conflictType: "update_conflict" | "delete_conflict";
   timestamp: string;
 }
+
+export interface BaseSyncResult {
+  success: boolean;
+  error?: string;
+  pushedRecords?: number;
+  pulledRecords?: number;
+  note?: string;
+}
+
+export interface QuestionSyncResult extends BaseSyncResult {
+  questionsPulled?: number;
+  subjectsSynced?: number;
+  details?: {
+    newSubjects: number;
+    updatedQuestions: number;
+    newQuestions: number;
+    skippedQuestions: number;
+    replacedSubjects: number;
+  };
+}
+
+export interface UserSyncResult extends BaseSyncResult {
+  usersSynced?: number;
+  classesSynced?: number;
+  details?: {
+    newUsers: number;
+    updatedUsers: number;
+    skippedUsers: number;
+  };
+}
+
+export type SyncResult = QuestionSyncResult | UserSyncResult;
 
 // Admin Dashboard Types
 export interface AdminDashboardStats {

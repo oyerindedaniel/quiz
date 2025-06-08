@@ -14,6 +14,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AuthenticationService } from "@/lib/auth/authentication-service";
 import { toast } from "sonner";
+import { Eye, EyeOff } from "lucide-react";
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -32,6 +33,7 @@ export function AdminLoginModal({ isOpen, onClose }: AdminLoginModalProps) {
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
 
   const authService = AuthenticationService.getInstance();
@@ -42,6 +44,7 @@ export function AdminLoginModal({ isOpen, onClose }: AdminLoginModalProps) {
       setFormData({ username: "", password: "" });
       setErrors({});
       setLoading(false);
+      setShowPassword(false);
     }
   }, [isOpen]);
 
@@ -193,21 +196,38 @@ export function AdminLoginModal({ isOpen, onClose }: AdminLoginModalProps) {
                 >
                   Password
                 </label>
-                <Input
-                  id="admin-password"
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) =>
-                    handleInputChange("password", e.target.value)
-                  }
-                  placeholder="••••••••"
-                  className={cn(
-                    "font-mono",
-                    errors.password &&
-                      "border-incorrect-500 focus-visible:border-incorrect-500"
-                  )}
-                  disabled={loading}
-                />
+                <div className="relative">
+                  <Input
+                    id="admin-password"
+                    type={showPassword ? "text" : "password"}
+                    value={formData.password}
+                    onChange={(e) =>
+                      handleInputChange("password", e.target.value)
+                    }
+                    placeholder="••••••••"
+                    className={cn(
+                      "font-mono pr-10",
+                      errors.password &&
+                        "border-incorrect-500 focus-visible:border-incorrect-500"
+                    )}
+                    disabled={loading}
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowPassword(!showPassword);
+                    }}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    disabled={loading}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
                 {errors.password && (
                   <p className="text-sm text-incorrect-600 mt-1 font-sans">
                     {errors.password}

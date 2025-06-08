@@ -8,6 +8,7 @@ import type {
   AdminSessionData,
   CreateAdminData,
 } from "../src/types/app.js";
+import type { SyncTrigger } from "../src/lib/sync/sync-engine.js";
 
 const electronAPI = {
   // Database operations (raw SQL)
@@ -24,8 +25,12 @@ const electronAPI = {
   quiz: {
     getQuestions: (subjectId: string) =>
       ipcRenderer.invoke("quiz:get-questions", subjectId),
+    getProcessedQuestions: (subjectId: string) =>
+      ipcRenderer.invoke("quiz:get-processed-questions", subjectId),
     findIncompleteAttempt: (userId: string, subjectId: string) =>
       ipcRenderer.invoke("quiz:find-incomplete-attempt", userId, subjectId),
+    hasSubmittedAttempt: (userId: string, subjectId: string) =>
+      ipcRenderer.invoke("quiz:has-submitted-attempt", userId, subjectId),
     createAttempt: (
       attemptData: Omit<NewQuizAttempt, "startedAt" | "updatedAt">
     ) => ipcRenderer.invoke("quiz:create-attempt", attemptData),
@@ -74,7 +79,7 @@ const electronAPI = {
 
   // Sync operations (secure)
   sync: {
-    trigger: (trigger?: "manual" | "startup" | "app_close") =>
+    trigger: (trigger?: SyncTrigger) =>
       ipcRenderer.invoke("sync:trigger", trigger),
     getStatus: () => ipcRenderer.invoke("sync:get-status"),
     queueOperation: <T = Record<string, unknown>>(operation: {
@@ -87,6 +92,10 @@ const electronAPI = {
       replaceExisting?: boolean;
       subjectCodes?: string[];
     }) => ipcRenderer.invoke("sync:sync-questions", options),
+    syncUsers: (options?: { replaceExisting?: boolean }) =>
+      ipcRenderer.invoke("sync:sync-users", options),
+    syncLocalDB: () => ipcRenderer.invoke("sync:sync-local-db"),
+    isLocalDBEmpty: () => ipcRenderer.invoke("sync:is-local-db-empty"),
   },
 
   // Seed operations (secure)
@@ -144,6 +153,15 @@ const electronAPI = {
       ipcRenderer.invoke("admin:toggle-user-active", studentCode, isActive),
     changeUserPin: (studentCode: string, newPin: string) =>
       ipcRenderer.invoke("admin:change-user-pin", studentCode, newPin),
+  },
+
+  // Remote operations (secure)
+  remote: {
+    bulkCreateQuestions: (
+      questions: Omit<NewQuestion, "createdAt" | "updatedAt">[]
+    ) => ipcRenderer.invoke("remote:bulk-create-questions", questions),
+    createStudent: (studentData: Omit<NewUser, "createdAt" | "updatedAt">) =>
+      ipcRenderer.invoke("remote:create-student", studentData),
   },
 };
 

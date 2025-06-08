@@ -10,6 +10,7 @@ import type {
   SyncStatus,
   SyncResult,
   QuizAttempt,
+  RawQuizAttemptResult,
 } from "../../types/app.js";
 import { isElectron } from "../../utils/lib.js";
 
@@ -36,26 +37,6 @@ export interface SyncConfiguration {
 
 interface CountResult {
   count: number;
-}
-
-// Raw database result interface (reflects actual SQLite column names)
-interface RawQuizAttemptResult {
-  id: string;
-  user_id: string;
-  subject_id: string;
-  answers: string | null;
-  score: number | null;
-  total_questions: number;
-  submitted: number; // SQLite boolean as integer
-  synced: number; // SQLite boolean as integer
-  started_at: string;
-  submitted_at: string | null;
-  updated_at: string;
-  sync_attempted_at: string | null;
-  sync_error: string | null;
-  session_duration: number | null;
-  elapsed_time: number;
-  last_active_at: string | null;
 }
 
 export class SyncEngine {
@@ -349,7 +330,7 @@ export class SyncEngine {
 
   private startPeriodicSync(): void {
     if (this.syncIntervalId) {
-      return; // Already running
+      return;
     }
 
     this.syncIntervalId = setInterval(async () => {
@@ -416,6 +397,7 @@ export class SyncEngine {
 
       // Then pull fresh data if local database is empty or outdated
       const pullResult = await this.pullFreshData();
+      console.log("pullResult", pullResult);
       pulledRecords += pullResult.pulledRecords || 0;
 
       return {
@@ -581,21 +563,21 @@ export class SyncEngine {
             lastActiveAt: rawAttempt.last_active_at,
           };
 
-          // await this.remoteDb.syncQuizAttempt(attempt);
+          await this.remoteDb.syncQuizAttempt(attempt);
 
-          // await this.localDb.runRawSQL(
-          //   "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ?, sync_error = NULL WHERE id = ?",
-          //   [new Date().toISOString(), attempt.id]
-          // );
+          await this.localDb.runRawSQL(
+            "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ?, sync_error = NULL WHERE id = ?",
+            [new Date().toISOString(), attempt.id]
+          );
 
           pushedRecords++;
 
-          // await this.logSyncOperation(
-          //   "push",
-          //   "quiz_attempts",
-          //   attempt.id,
-          //   "success"
-          // );
+          await this.logSyncOperation(
+            "push",
+            "quiz_attempts",
+            attempt.id,
+            "success"
+          );
         } catch (error) {
           await this.logSyncOperation(
             "push",
@@ -666,23 +648,20 @@ export class SyncEngine {
               lastActiveAt: rawAttempt.last_active_at,
             };
 
-            console.log("did transform");
-            // await this.remoteDb.syncQuizAttempt(attempt);
+            await this.remoteDb.syncQuizAttempt(attempt);
 
-            // await this.localDb.runRawSQL(
-            //   "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ? WHERE id = ?",
-            //   [new Date().toISOString(), attempt.id]
-            // );
-
-            console.log("did sync");
+            await this.localDb.runRawSQL(
+              "UPDATE quiz_attempts SET synced = 1, sync_attempted_at = ? WHERE id = ?",
+              [new Date().toISOString(), attempt.id]
+            );
 
             pushedRecords++;
-            // await this.logSyncOperation(
-            //   "push",
-            //   "quiz_attempts",
-            //   attempt.id,
-            //   "success"
-            // );
+            await this.logSyncOperation(
+              "push",
+              "quiz_attempts",
+              attempt.id,
+              "success"
+            );
           } catch (error) {
             await this.logSyncOperation(
               "push",
@@ -739,6 +718,9 @@ export class SyncEngine {
       const hasUsers = (userCount[0] as CountResult)?.count > 0;
       const hasSubjects = (subjectCount[0] as CountResult)?.count > 0;
 
+      console.log("hasUsers", hasUsers);
+      console.log("hasSubjects", hasSubjects);
+
       if (hasUsers && hasSubjects) {
         console.log(
           "SyncEngine: Local database already populated, skipping initial data pull"
@@ -787,8 +769,6 @@ export class SyncEngine {
               }
             }
 
-            console.log("SyncEngine: Pulled users", syncData.users);
-
             // Insert subjects
             for (const subject of syncData.subjects) {
               try {
@@ -802,6 +782,8 @@ export class SyncEngine {
                   createdAt: subject.createdAt.toISOString(),
                   updatedAt: subject.updatedAt.toISOString(),
                   isActive: subject.isActive,
+                  category: subject.category || null,
+                  academicYear: subject.academicYear || null,
                 };
 
                 await this.localDb.createSubject(localSubject);
@@ -844,6 +826,13 @@ export class SyncEngine {
 
             console.log(
               `SyncEngine: Successfully pulled ${pulledRecords} fresh records from remote`
+            );
+            console.log(
+              "************************************************************"
+            );
+            console.log("SyncEngine: Skipping remote data pull");
+            console.log(
+              "************************************************************"
             );
             return {
               success: true,
