@@ -205,7 +205,6 @@ class QuizApp {
       console.log(`Attempting to serve file: ${fullPath}`);
 
       try {
-        // Check if file exists
         if (!existsSync(fullPath)) {
           console.log(
             `File not found: ${fullPath}, attempting fallback to index.html`
@@ -223,7 +222,6 @@ class QuizApp {
           }
         }
 
-        // Determine content type
         const ext = filePath.split(".").pop()?.toLowerCase();
         let contentType = "text/plain";
 
@@ -401,22 +399,20 @@ class QuizApp {
         this.isQuitting = true;
 
         try {
-          // Perform cleanup and final sync
           await this.cleanup();
           console.log("Cleanup completed, quitting app...");
           app.quit();
         } catch (error) {
           console.error("Cleanup failed during quit:", error);
-          // Still quit even if cleanup fails
+
           app.quit();
         }
       } else {
         console.log("User cancelled quit operation");
-        // User clicked "Cancel" or closed dialog, do nothing
       }
     } catch (error) {
       console.error("Error showing quit confirmation dialog:", error);
-      // If dialog fails, allow normal quit
+
       this.isQuitting = true;
       app.quit();
     }
@@ -906,10 +902,24 @@ class QuizApp {
       "admin:authenticate",
       async (_, username: string, password: string) => {
         try {
+          console.log("Admin auth attempt - Username:", username);
+          console.log("Environment check:", {
+            isDev,
+            neonUrl: process.env.NEON_DATABASE_URL ? "SET" : "NOT SET",
+            jwtSecret: process.env.JWT_SECRET ? "SET" : "NOT SET",
+          });
+
           const result = await this.dbService.authenticateAdmin(
             username,
             password
           );
+
+          console.log("Admin auth result:", {
+            success: result.success,
+            hasAdmin: !!result.admin,
+            hasToken: !!result.sessionToken,
+            error: result.error,
+          });
 
           if (result.success && result.sessionToken && result.admin) {
             const mainSession = session.defaultSession;
@@ -917,6 +927,8 @@ class QuizApp {
             const cookieUrl = isDev
               ? "http://localhost:3000"
               : "app://localhost";
+
+            console.log("Setting cookies for URL:", cookieUrl);
 
             await mainSession.cookies.set({
               url: cookieUrl,
@@ -944,11 +956,17 @@ class QuizApp {
               sameSite: "strict",
               expirationDate: Math.floor(Date.now() / 1000) + 86400,
             });
+
+            console.log("Cookies set successfully");
           }
 
           return result;
         } catch (error) {
           console.error("Admin authentication error:", error);
+          console.error("Error details:", {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+          });
           return {
             success: false,
             error: "Admin authentication failed. Please try again.",

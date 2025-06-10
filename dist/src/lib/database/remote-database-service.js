@@ -1187,7 +1187,7 @@ class RemoteDatabaseService {
                 .where((0, drizzle_orm_1.eq)(remote_schema_js_1.remoteSchema.users.isActive, true))
                 .orderBy(remote_schema_js_1.remoteSchema.users.studentCode);
             let seededStudentCodes = new Set();
-            let seededStudentsMap = new Map();
+            const seededStudentsMap = new Map();
             try {
                 const { ALL_STUDENTS } = await Promise.resolve().then(() => __importStar(require("../constants/students.js")));
                 seededStudentCodes = new Set(ALL_STUDENTS.map((s) => s.studentCode));

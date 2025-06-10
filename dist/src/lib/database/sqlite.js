@@ -191,14 +191,14 @@ class SQLiteManager {
             "CREATE INDEX IF NOT EXISTS idx_sync_log_attempted_at ON sync_log(attempted_at)",
         ];
         try {
-            await this.runMigrations();
             for (const query of createTableQueries) {
                 this.sqlite.exec(query);
             }
             for (const query of createIndexQueries) {
                 this.sqlite.exec(query);
             }
-            console.log("All tables and indexes created successfully");
+            await this.runMigrations();
+            console.log("All tables, indexes, and migrations completed successfully");
         }
         catch (error) {
             console.error("Error creating tables:", error);
@@ -245,7 +245,6 @@ class SQLiteManager {
             throw new Error("SQLite instance not available");
         }
         try {
-            // Check if category column exists in subjects table
             const categoryColumnExists = this.sqlite
                 .prepare("SELECT COUNT(*) as count FROM pragma_table_info('subjects') WHERE name = 'category'")
                 .get();
@@ -253,7 +252,6 @@ class SQLiteManager {
                 console.log("Adding category column to subjects table...");
                 this.sqlite.exec("ALTER TABLE subjects ADD COLUMN category TEXT");
             }
-            // Check if academic_year column exists in subjects table
             const academicYearColumnExists = this.sqlite
                 .prepare("SELECT COUNT(*) as count FROM pragma_table_info('subjects') WHERE name = 'academic_year'")
                 .get();

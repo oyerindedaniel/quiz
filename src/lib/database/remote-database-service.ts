@@ -1559,7 +1559,7 @@ export class RemoteDatabaseService {
         .orderBy(remoteSchema.users.studentCode);
 
       let seededStudentCodes: Set<string> = new Set();
-      let seededStudentsMap: Map<string, string> = new Map();
+      const seededStudentsMap: Map<string, string> = new Map();
       try {
         const { ALL_STUDENTS } = await import("../constants/students.js");
         seededStudentCodes = new Set(

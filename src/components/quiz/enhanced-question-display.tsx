@@ -665,7 +665,7 @@ export function EnhancedQuestionDisplay({
             </Badge>
           </div>
           <div className="p-6">
-            {imageItem.content && renderImage(imageItem.content, "up")}
+            {imageItem.content && renderImage(imageItem.imageUrl ?? "", "up")}
           </div>
         </div>
 
@@ -872,6 +872,7 @@ export function EnhancedQuestionDisplay({
 
   if (currentItem.type === "image") {
     const nextItem = questionItems[currentIndex + 1];
+
     if (nextItem && nextItem.type === "question") {
       return renderImageWithQuestion(currentItem, nextItem);
     }

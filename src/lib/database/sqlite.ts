@@ -216,8 +216,6 @@ export class SQLiteManager {
     ];
 
     try {
-      await this.runMigrations();
-
       for (const query of createTableQueries) {
         this.sqlite.exec(query);
       }
@@ -226,7 +224,9 @@ export class SQLiteManager {
         this.sqlite.exec(query);
       }
 
-      console.log("All tables and indexes created successfully");
+      await this.runMigrations();
+
+      console.log("All tables, indexes, and migrations completed successfully");
     } catch (error) {
       console.error("Error creating tables:", error);
       throw error;
@@ -279,7 +279,6 @@ export class SQLiteManager {
     }
 
     try {
-      // Check if category column exists in subjects table
       const categoryColumnExists = this.sqlite
         .prepare(
           "SELECT COUNT(*) as count FROM pragma_table_info('subjects') WHERE name = 'category'"
@@ -291,7 +290,6 @@ export class SQLiteManager {
         this.sqlite.exec("ALTER TABLE subjects ADD COLUMN category TEXT");
       }
 
-      // Check if academic_year column exists in subjects table
       const academicYearColumnExists = this.sqlite
         .prepare(
           "SELECT COUNT(*) as count FROM pragma_table_info('subjects') WHERE name = 'academic_year'"
