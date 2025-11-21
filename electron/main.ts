@@ -1,3 +1,9 @@
+// =====================================================
+// TODO: Move internal API keys, database credentials,
+// and other sensitive environment variables to a
+// secure, production-ready environment
+// =====================================================
+
 import {
   app,
   BrowserWindow,
