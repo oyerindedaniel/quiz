@@ -356,6 +356,10 @@ export interface QuizAPI {
     studentCode: string,
     subjectCode: string
   ) => Promise<QuizDeletionResult>;
+  resetLocalAttempts: (
+    studentCode: string,
+    subjectCode: string
+  ) => Promise<QuizDeletionResult>;
 }
 
 // User API Types

@@ -525,7 +525,7 @@ export function QuizResults({
           <Button
             onClick={handleDownloadResults}
             variant="outline"
-            className="px-8 py-3 text-base font-medium border-brand-300 dark:border-brand-600 text-brand-700 dark:text-brand-300 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-xl"
+            className="px-8 py-3 text-base font-medium border-brand-300 dark:border-brand-600 text-brand-700 dark:text-brand-300 hover:bg-brand-50 rounded-xl"
           >
             <svg
               className="w-5 h-5 mr-2"
@@ -545,8 +545,8 @@ export function QuizResults({
 
           <Button
             onClick={handleLogout}
-            variant="outline"
-            className="px-8 py-3 text-base font-medium border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl"
+            variant="destructive"
+            className="px-8 py-3 text-base font-medium rounded-xl"
           >
             <svg
               className="w-5 h-5 mr-2"

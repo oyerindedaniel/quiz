@@ -5,6 +5,7 @@ import { LoginForm } from "@/components/auth/login-form";
 import { AdminLoginModal } from "@/components/auth/admin-login-modal";
 import SyncMenu from "@/components/sync/sync-menu";
 import ManualSync from "@/components/sync/manual-sync";
+import ResetQuizControl from "@/components/quiz/reset-quiz-control";
 import { toast } from "sonner";
 
 export default function HomePage() {
@@ -27,8 +28,9 @@ export default function HomePage() {
     <div className="min-h-screen bg-gradient-to-br from-brand-50 to-brand-100 flex flex-col items-center justify-center p-4">
       <SyncMenu />
 
-      <div className="fixed top-4 left-4 z-10">
+      <div className="fixed top-4 left-4 z-10 flex gap-5 items-center">
         <ManualSync />
+        <ResetQuizControl />
       </div>
 
       <div className="w-full max-w-md mx-auto">

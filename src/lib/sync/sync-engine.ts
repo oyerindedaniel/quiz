@@ -626,7 +626,10 @@ export class SyncEngine {
 
       for (let i = 0; i < unsyncedAttempts.length; i += batchSize) {
         const batch = unsyncedAttempts.slice(i, i + batchSize);
-        console.log("batch", batch);
+        console.log(
+          `Batch ${i / batchSize + 1} (size: ${batch.length}):`,
+          batch
+        );
         for (const rawAttempt of batch) {
           try {
             const attempt: QuizAttempt = {

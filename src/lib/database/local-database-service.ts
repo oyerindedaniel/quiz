@@ -677,28 +677,45 @@ export class LocalDatabaseService {
     try {
       const db = this.getDb();
 
-      const user = await db
-        .select({ id: localSchema.users.id })
+      const userResult = await db
+        .select({
+          id: localSchema.users.id,
+          class: localSchema.users.class,
+        })
         .from(localSchema.users)
         .where(eq(localSchema.users.studentCode, studentCode))
         .limit(1);
 
-      if (user.length === 0) {
+      if (userResult.length === 0) {
         return { success: false, error: "User not found" };
       }
 
-      const subject = await db
-        .select({ id: localSchema.subjects.id })
+      const { id: userId, class: userClass } = userResult[0];
+
+      const subjectResult = await db
+        .select({
+          id: localSchema.subjects.id,
+          class: localSchema.subjects.class,
+          isActive: localSchema.subjects.isActive,
+        })
         .from(localSchema.subjects)
-        .where(eq(localSchema.subjects.subjectCode, subjectCode))
+        .where(
+          and(
+            eq(localSchema.subjects.subjectCode, subjectCode),
+            eq(localSchema.subjects.class, userClass),
+            eq(localSchema.subjects.isActive, true)
+          )
+        )
         .limit(1);
 
-      if (subject.length === 0) {
-        return { success: false, error: "Subject not found" };
+      if (subjectResult.length === 0) {
+        return {
+          success: false,
+          error: "Subject not found or not available for this student's class",
+        };
       }
 
-      const userId = user[0].id;
-      const subjectId = subject[0].id;
+      const subjectId = subjectResult[0].id;
 
       const deleteResult = await db
         .delete(localSchema.quizAttempts)
@@ -715,7 +732,7 @@ export class LocalDatabaseService {
         deletedCount: deleteResult.length,
         error:
           deleteResult.length === 0
-            ? "No quiz attempts found to delete"
+            ? "No quiz attempts found for this subject"
             : undefined,
       };
     } catch (error) {

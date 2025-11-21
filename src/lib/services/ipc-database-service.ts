@@ -331,6 +331,14 @@ export class IPCDatabaseService {
     return window.electronAPI.quiz.deleteQuizAttempts(studentCode, subjectCode);
   }
 
+  async resetLocalQuizAttempts(
+    studentCode: string,
+    subjectCode: string
+  ): Promise<{ success: boolean; error?: string; deletedCount?: number }> {
+    this.checkElectronAPI();
+    return window.electronAPI.quiz.resetLocalAttempts(studentCode, subjectCode);
+  }
+
   /**
    * Sync questions from remote DB to local DB
    */

@@ -47,6 +47,11 @@ const electronAPI = {
     ) => ipcRenderer.invoke("quiz:bulk-create-questions", questions),
     deleteQuizAttempts: (studentCode: string, subjectCode: string) =>
       ipcRenderer.invoke("quiz:delete-quiz-attempts", studentCode, subjectCode),
+    resetLocalAttempts: (studentCode: string, subjectCode: string) =>
+      ipcRenderer.invoke("quiz:reset-local-attempts", {
+        studentCode,
+        subjectCode,
+      }),
   },
 
   // User operations (secure)

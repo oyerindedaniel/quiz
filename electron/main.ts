@@ -630,6 +630,32 @@ class QuizApp {
       }
     );
 
+    ipcMain.handle(
+      "quiz:reset-local-attempts",
+      async (_, payload: { studentCode: string; subjectCode: string }) => {
+        try {
+          const { studentCode, subjectCode } = payload;
+          if (!studentCode || !subjectCode) {
+            throw new Error("studentCode and subjectCode are required");
+          }
+
+          return await this.dbService.deleteLocalQuizAttempts(
+            studentCode,
+            subjectCode
+          );
+        } catch (error) {
+          console.error("Reset local quiz attempts error:", error);
+          return {
+            success: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to reset quiz attempts",
+          };
+        }
+      }
+    );
+
     // Remote operations
     ipcMain.handle(
       "remote:bulk-create-questions",
