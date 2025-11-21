@@ -33,11 +33,8 @@ export function downloadCSV<T>(config: CSVDownloadConfig<T>): void {
   } = config;
 
   try {
-    // Create CSV content
     const csvContent = [
-      // Add headers
       headers.map((header) => escapeCSVValue(header)).join(","),
-      // Add data rows
       ...data.map((item) =>
         extractValues(item)
           .map((value) => escapeCSVValue(value))
@@ -45,7 +42,6 @@ export function downloadCSV<T>(config: CSVDownloadConfig<T>): void {
       ),
     ].join("\n");
 
-    // Create and download file
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -58,10 +54,8 @@ export function downloadCSV<T>(config: CSVDownloadConfig<T>): void {
     link.click();
     document.body.removeChild(link);
 
-    // Clean up
     window.URL.revokeObjectURL(url);
 
-    // Show success notification
     if (showToast) {
       toast.success("Download started!", {
         description: successMessage,

@@ -1,4 +1,5 @@
 import { text, integer, sqliteTable } from "drizzle-orm/sqlite-core";
+import { CLASS_VALUES } from "../constants/class-enum.js";
 
 // SQLite Schema (Local Database)
 export const usersTable = sqliteTable("users", {
@@ -6,7 +7,9 @@ export const usersTable = sqliteTable("users", {
   name: text("name").notNull(),
   studentCode: text("student_code").unique().notNull(),
   passwordHash: text("password_hash").notNull(),
-  class: text("class", { enum: ["SS2", "JSS3", "BASIC5"] }).notNull(),
+  class: text("class", {
+    enum: CLASS_VALUES,
+  }).notNull(),
   gender: text("gender", { enum: ["MALE", "FEMALE"] }).notNull(),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -20,7 +23,9 @@ export const subjectsTable = sqliteTable("subjects", {
   name: text("name").notNull(),
   subjectCode: text("subject_code").unique().notNull(),
   description: text("description"),
-  class: text("class", { enum: ["SS2", "JSS3", "BASIC5"] }).notNull(),
+  class: text("class", {
+    enum: CLASS_VALUES,
+  }).notNull(),
   totalQuestions: integer("total_questions").default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),

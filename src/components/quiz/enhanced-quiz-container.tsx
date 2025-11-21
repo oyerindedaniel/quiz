@@ -188,7 +188,7 @@ export function EnhancedQuizContainer() {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to initialize quiz";
 
-      console.log("she did crash");
+      // console.log("she did crash");
 
       if (
         errorMessage.includes("already completed") ||
@@ -364,8 +364,6 @@ export function EnhancedQuizContainer() {
       if (!result.success) {
         throw new Error(result.error || "Failed to submit quiz");
       }
-
-      console.log("result", result);
 
       setState((prev) => ({
         ...prev,

@@ -1,7 +1,12 @@
 import { LocalDatabaseService } from "../database/local-database-service.js";
 import { v4 as uuidv4 } from "uuid";
 import type { NewSubject, NewQuestion } from "../database/local-schema.js";
-import type { CSVRow, ImportResult, QuestionType } from "../../types/app.js";
+import type {
+  CSVRow,
+  ImportResult,
+  QuestionType,
+  Class,
+} from "../../types/app.js";
 import { generateSubjectName } from "../constants/students.js";
 import { IPCDatabaseService } from "../services/ipc-database-service.js";
 import { RemoteDatabaseService } from "../database/remote-database-service.js";
@@ -348,10 +353,10 @@ export class CSVImportService {
     }
 
     if (!subject) {
-      const classMatch = subjectCode.match(/^(SS2|JSS3|BASIC5)_/);
-      const classLevel = classMatch
-        ? (classMatch[1] as "SS2" | "JSS3" | "BASIC5")
-        : "SS2";
+      const classMatch = subjectCode.match(
+        /^(SS1|SS2|SS3|JSS1|JSS2|JSS3|BASIC1|BASIC2|BASIC3|BASIC4|BASIC5)_/
+      );
+      const classLevel = (classMatch?.[1] as Class) || ("SS2" as Class);
 
       const subjectName = generateSubjectName(subjectCode);
 

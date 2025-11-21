@@ -2,6 +2,12 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { localSchema } from "./local-schema.js";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import {
+  CLASS_VALUES_STRING,
+  getUsersTableSQL,
+  getSubjectsTableSQL,
+} from "./sqlite-schema-utils.js";
+import { SQLITE_MIGRATIONS } from "./sqlite-migrations.js";
 
 export class SQLiteManager {
   private static instance: SQLiteManager | null = null;
@@ -87,94 +93,84 @@ export class SQLiteManager {
     this.sqlite.pragma("foreign_keys = ON");
 
     const createTableQueries = [
-      // Users table
-      `CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        student_code TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        class TEXT NOT NULL CHECK (class IN ('SS2', 'JSS3', 'BASIC5')),
-        gender TEXT NOT NULL CHECK (gender IN ('MALE', 'FEMALE')),
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        last_synced TEXT,
-        is_active INTEGER DEFAULT 1,
-        last_login TEXT
-      )`,
-
-      // Subjects table
-      `CREATE TABLE IF NOT EXISTS subjects (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-        subject_code TEXT UNIQUE NOT NULL,
-        description TEXT,
-        class TEXT NOT NULL CHECK (class IN ('SS2', 'JSS3', 'BASIC5')),
-        total_questions INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_active INTEGER DEFAULT 1,
-        category TEXT,
-        academic_year TEXT
-      )`,
-
+      getUsersTableSQL("users", CLASS_VALUES_STRING, true),
+      getSubjectsTableSQL("subjects", CLASS_VALUES_STRING, true),
       // Questions table
       `CREATE TABLE IF NOT EXISTS questions (
          id TEXT PRIMARY KEY,
-  subject_id TEXT NOT NULL,
-  subject_code TEXT NOT NULL,
-  text TEXT NOT NULL,
-  options TEXT NOT NULL,
-  answer TEXT NOT NULL,
-  question_order INTEGER NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  explanation TEXT,
-  is_active INTEGER DEFAULT 1,
-  FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+         subject_id TEXT NOT NULL,
+         subject_code TEXT NOT NULL,
+         text TEXT NOT NULL,
+         options TEXT NOT NULL,
+         answer TEXT NOT NULL,
+         question_order INTEGER NOT NULL,
+         created_at TEXT NOT NULL,
+         updated_at TEXT NOT NULL,
+         explanation TEXT,
+         is_active INTEGER DEFAULT 1,
+         FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
       )`,
-
       // Quiz attempts table
       `CREATE TABLE IF NOT EXISTS quiz_attempts (
          id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  subject_id TEXT NOT NULL,
-  answers TEXT,
-  score INTEGER,
-  total_questions INTEGER NOT NULL,
-  submitted INTEGER DEFAULT 0,
-  synced INTEGER DEFAULT 0,
-  started_at TEXT NOT NULL,
-  submitted_at TEXT,
-  updated_at TEXT NOT NULL,
-  sync_attempted_at TEXT,
-  sync_error TEXT,
-  session_duration INTEGER,
-  elapsed_time INTEGER DEFAULT 0,
-  last_active_at TEXT,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+         user_id TEXT NOT NULL,
+         subject_id TEXT NOT NULL,
+         answers TEXT,
+         score INTEGER,
+         total_questions INTEGER NOT NULL,
+         submitted INTEGER DEFAULT 0,
+         synced INTEGER DEFAULT 0,
+         started_at TEXT NOT NULL,
+         submitted_at TEXT,
+         updated_at TEXT NOT NULL,
+         sync_attempted_at TEXT,
+         sync_error TEXT,
+         session_duration INTEGER,
+         elapsed_time INTEGER DEFAULT 0,
+         last_active_at TEXT,
+         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+         FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
       )`,
-
       // Sync log table
       `CREATE TABLE IF NOT EXISTS sync_log (
         id TEXT PRIMARY KEY,
         operation_type TEXT NOT NULL,
-          table_name TEXT NOT NULL,
-         record_id TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('success', 'failed', 'pending')),
-  error_message TEXT,
-  attempted_at TEXT NOT NULL,
-  completed_at TEXT
+        table_name TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('success', 'failed', 'pending')),
+        error_message TEXT,
+        attempted_at TEXT NOT NULL,
+        completed_at TEXT
       )`,
-
       // Sync timestamps table
       `CREATE TABLE IF NOT EXISTS sync_timestamps (
        table_name TEXT PRIMARY KEY,
-  last_pull_sync TEXT,
-  last_push_sync TEXT,
-  last_full_sync TEXT
+       last_pull_sync TEXT,
+       last_push_sync TEXT,
+       last_full_sync TEXT
       )`,
     ];
+
+    try {
+      for (const query of createTableQueries) {
+        this.sqlite.exec(query);
+      }
+
+      await this.runMigrations();
+
+      this.createIndexes();
+
+      console.log("All tables, indexes, and migrations completed successfully");
+    } catch (error) {
+      console.error("Error creating tables:", error);
+      throw error;
+    }
+  }
+
+  private createIndexes(): void {
+    if (!this.sqlite) {
+      throw new Error("SQLite instance not available");
+    }
 
     const createIndexQueries = [
       // Users indexes
@@ -216,19 +212,11 @@ export class SQLiteManager {
     ];
 
     try {
-      await this.runMigrations();
-
-      for (const query of createTableQueries) {
-        this.sqlite.exec(query);
-      }
-
       for (const query of createIndexQueries) {
         this.sqlite.exec(query);
       }
-
-      console.log("All tables and indexes created successfully");
     } catch (error) {
-      console.error("Error creating tables:", error);
+      console.error("Error creating indexes:", error);
       throw error;
     }
   }
@@ -271,7 +259,7 @@ export class SQLiteManager {
   }
 
   /**
-   * Run database migrations to add missing columns
+   * Run database migrations using the registry
    */
   private async runMigrations(): Promise<void> {
     if (!this.sqlite) {
@@ -279,28 +267,31 @@ export class SQLiteManager {
     }
 
     try {
-      // Check if category column exists in subjects table
-      const categoryColumnExists = this.sqlite
-        .prepare(
-          "SELECT COUNT(*) as count FROM pragma_table_info('subjects') WHERE name = 'category'"
-        )
-        .get() as { count: number };
+      this.sqlite.exec(`CREATE TABLE IF NOT EXISTS migrations_history (
+        id TEXT PRIMARY KEY,
+        description TEXT NOT NULL,
+        applied_at TEXT NOT NULL
+      )`);
 
-      if (categoryColumnExists.count === 0) {
-        console.log("Adding category column to subjects table...");
-        this.sqlite.exec("ALTER TABLE subjects ADD COLUMN category TEXT");
-      }
+      const appliedMigrations = this.sqlite
+        .prepare("SELECT id FROM migrations_history")
+        .all() as Array<{ id: string }>;
+      const appliedSet = new Set(appliedMigrations.map((row) => row.id));
 
-      // Check if academic_year column exists in subjects table
-      const academicYearColumnExists = this.sqlite
-        .prepare(
-          "SELECT COUNT(*) as count FROM pragma_table_info('subjects') WHERE name = 'academic_year'"
-        )
-        .get() as { count: number };
+      for (const migration of SQLITE_MIGRATIONS) {
+        if (appliedSet.has(migration.id)) {
+          continue;
+        }
 
-      if (academicYearColumnExists.count === 0) {
-        console.log("Adding academic_year column to subjects table...");
-        this.sqlite.exec("ALTER TABLE subjects ADD COLUMN academic_year TEXT");
+        console.log(
+          `Running SQLite migration ${migration.id}: ${migration.description}`
+        );
+        await migration.run({ sqlite: this.sqlite });
+        this.sqlite
+          .prepare(
+            "INSERT INTO migrations_history (id, description, applied_at) VALUES (?, ?, ?)"
+          )
+          .run(migration.id, migration.description, new Date().toISOString());
       }
 
       console.log("Database migrations completed successfully");

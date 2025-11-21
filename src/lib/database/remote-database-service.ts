@@ -22,6 +22,7 @@ import type {
   RemoteProcessedQuestion,
 } from "../../types/app.js";
 import { buildExcludedSetClause } from "../../utils/drizzle.js";
+import { generateStudentPin } from "../../utils/pin-generator.js";
 
 interface ModifiedRecordsResult {
   id: string;
@@ -1559,7 +1560,7 @@ export class RemoteDatabaseService {
         .orderBy(remoteSchema.users.studentCode);
 
       let seededStudentCodes: Set<string> = new Set();
-      let seededStudentsMap: Map<string, string> = new Map();
+      const seededStudentsMap: Map<string, string> = new Map();
       try {
         const { ALL_STUDENTS } = await import("../constants/students.js");
         seededStudentCodes = new Set(
@@ -1567,7 +1568,7 @@ export class RemoteDatabaseService {
         );
         ALL_STUDENTS.forEach(
           (s: { studentCode: string; pin?: string }, index: number) => {
-            const pin = s.pin || String(100000 + (index + 1)).padStart(6, "1");
+            const pin = s.pin || generateStudentPin(index);
             seededStudentsMap.set(s.studentCode, pin);
           }
         );
