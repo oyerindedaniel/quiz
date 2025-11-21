@@ -1,6 +1,6 @@
 import { LocalDatabaseService } from "../database/local-database-service.js";
 import { generateUUID } from "../../utils/lib.js";
-import { ALL_STUDENTS } from "../constants/students.js";
+import { ALL_STUDENTS, ALL_SUBJECTS } from "../constants/students.js";
 import bcrypt from "bcryptjs";
 import type {
   UserSeedData,
@@ -10,6 +10,7 @@ import type {
 } from "../../types/app.js";
 import { RemoteDatabaseService } from "../database/remote-database-service.js";
 import { v4 as uuidv4 } from "uuid";
+import { generateStudentPin } from "../../utils/pin-generator.js";
 
 interface DatabaseServiceOptions {
   isRemote?: boolean;
@@ -88,7 +89,7 @@ export class UserSeedingService {
   }> {
     const studentsWithPins: UserSeedData[] = ALL_STUDENTS.map(
       (student, index) => {
-        const pin = String(100000 + (index + 1)).padStart(6, "1");
+        const pin = generateStudentPin(index);
 
         return {
           name: student.name,
@@ -114,7 +115,7 @@ export class UserSeedingService {
    */
   getStudentCredentials(): UserSeedData[] {
     return ALL_STUDENTS.map((student, index) => {
-      const pin = String(100000 + (index + 1)).padStart(6, "1");
+      const pin = generateStudentPin(index);
 
       return {
         name: student.name,
@@ -134,7 +135,6 @@ export class UserSeedingService {
     existing: number;
     errors: string[];
   }> {
-    const { ALL_SUBJECTS } = await import("../constants/students.js");
     const result: { created: number; existing: number; errors: string[] } = {
       created: 0,
       existing: 0,

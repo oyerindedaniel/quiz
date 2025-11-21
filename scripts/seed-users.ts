@@ -10,6 +10,7 @@ config();
 
 import { UserSeedingService } from "../src/lib/seeding/user-seeding-service";
 import { RemoteDatabaseService } from "../src/lib/database/remote-database-service";
+import { ALL_STUDENTS, ALL_SUBJECTS } from "../src/lib/constants/students";
 
 async function main() {
   console.log("🌱 Starting database seeding...\n");
@@ -54,23 +55,51 @@ async function main() {
     console.log("\n🎉 Seeding completed successfully!");
 
     if (userResults.users.created > 0 || subjectResults.created > 0) {
+      const studentsByClass = ALL_STUDENTS.reduce((acc, student) => {
+        const classKey = student.class;
+        if (!acc[classKey]) {
+          acc[classKey] = [];
+        }
+        acc[classKey].push(student.studentCode);
+        return acc;
+      }, {} as Record<string, string[]>);
+
       console.log("\n📋 Sample Student Codes Generated:");
-      console.log("   BASIC5_STU_001, BASIC5_STU_002, BASIC5_STU_003...");
-      console.log("   SS2_STU_001, SS2_STU_002, SS2_STU_003, SS2_STU_004");
-      console.log(
-        "   JSS3_STU_001, JSS3_STU_002, JSS3_STU_003, JSS3_STU_004, JSS3_STU_005, JSS3_STU_006, JSS3_STU_007"
-      );
+      Object.entries(studentsByClass).forEach(([className, codes]) => {
+        const sampleCodes = codes.slice(0, 5).join(", ");
+        const remaining =
+          codes.length > 5
+            ? `... (${codes.length} total)`
+            : `(${codes.length} total)`;
+        console.log(
+          `   ${className}: ${sampleCodes}${
+            codes.length > 5 ? ", ..." : ""
+          } ${remaining}`
+        );
+      });
+
+      const subjectsByClass = ALL_SUBJECTS.reduce((acc, subject) => {
+        const classKey = subject.class;
+        if (!acc[classKey]) {
+          acc[classKey] = [];
+        }
+        acc[classKey].push(subject.subjectCode);
+        return acc;
+      }, {} as Record<string, string[]>);
 
       console.log("\n📋 Subject Codes Generated:");
-      console.log(
-        "   BASIC5_MATH, BASIC5_ENG, BASIC5_BSC, BASIC5_SST, BASIC5_YOR"
-      );
-      console.log(
-        "   SS2_MATH, SS2_ENG, SS2_BIO, SS2_CHEM, SS2_PHY, SS2_GEO..."
-      );
-      console.log(
-        "   JSS3_MATH, JSS3_ENG, JSS3_BSC, JSS3_SST, JSS3_YOR, JSS3_TECH..."
-      );
+      Object.entries(subjectsByClass).forEach(([className, codes]) => {
+        const sampleCodes = codes.slice(0, 5).join(", ");
+        const remaining =
+          codes.length > 5
+            ? `... (${codes.length} total)`
+            : `(${codes.length} total)`;
+        console.log(
+          `   ${className}: ${sampleCodes}${
+            codes.length > 5 ? ", ..." : ""
+          } ${remaining}`
+        );
+      });
     }
   } catch (error) {
     if (error instanceof Error) {

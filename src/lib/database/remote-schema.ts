@@ -12,9 +12,10 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import { CLASS_VALUES } from "../constants/class-enum.js";
 
 export const genderEnum = pgEnum("gender", ["MALE", "FEMALE"]);
-export const classEnum = pgEnum("class", ["SS2", "JSS3", "BASIC5"]);
+export const classEnum = pgEnum("class", CLASS_VALUES);
 export const adminRoleEnum = pgEnum("admin_role", [
   "SUPER_ADMIN",
   "ADMIN",

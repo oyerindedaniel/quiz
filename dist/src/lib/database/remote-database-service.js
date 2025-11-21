@@ -38,6 +38,7 @@ const drizzle_orm_1 = require("drizzle-orm");
 const neon_js_1 = require("./neon.js");
 const remote_schema_js_1 = require("./remote-schema.js");
 const drizzle_js_1 = require("../../utils/drizzle.js");
+const pin_generator_js_1 = require("../../utils/pin-generator.js");
 class RemoteDatabaseService {
     constructor() {
         this.db = null;
@@ -1192,7 +1193,7 @@ class RemoteDatabaseService {
                 const { ALL_STUDENTS } = await Promise.resolve().then(() => __importStar(require("../constants/students.js")));
                 seededStudentCodes = new Set(ALL_STUDENTS.map((s) => s.studentCode));
                 ALL_STUDENTS.forEach((s, index) => {
-                    const pin = s.pin || String(100000 + (index + 1)).padStart(6, "1");
+                    const pin = s.pin || (0, pin_generator_js_1.generateStudentPin)(index);
                     seededStudentsMap.set(s.studentCode, pin);
                 });
             }

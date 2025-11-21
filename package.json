@@ -59,15 +59,6 @@
       "!**/tsconfig*.json",
       "!**/.{nyc_output,coverage,COVERAGE,lcov-report}"
     ],
-    "extraResources": [
-      {
-        "from": "data/",
-        "to": "data/",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
     "nodeGypRebuild": false,
     "buildDependenciesFromSource": false,
     "win": {

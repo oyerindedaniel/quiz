@@ -3,8 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.remoteSchema = exports.adminsRelations = exports.quizAttemptsRelations = exports.questionsRelations = exports.subjectsRelations = exports.usersRelations = exports.remoteAdminsTable = exports.remoteQuizAnalyticsTable = exports.remoteQuizAttemptsTable = exports.remoteQuestionsTable = exports.remoteSubjectsTable = exports.remoteUsersTable = exports.adminStatusEnum = exports.adminRoleEnum = exports.classEnum = exports.genderEnum = void 0;
 const pg_core_1 = require("drizzle-orm/pg-core");
 const drizzle_orm_1 = require("drizzle-orm");
+const class_enum_js_1 = require("../constants/class-enum.js");
 exports.genderEnum = (0, pg_core_1.pgEnum)("gender", ["MALE", "FEMALE"]);
-exports.classEnum = (0, pg_core_1.pgEnum)("class", ["SS2", "JSS3", "BASIC5"]);
+exports.classEnum = (0, pg_core_1.pgEnum)("class", class_enum_js_1.CLASS_VALUES);
 exports.adminRoleEnum = (0, pg_core_1.pgEnum)("admin_role", [
     "SUPER_ADMIN",
     "ADMIN",

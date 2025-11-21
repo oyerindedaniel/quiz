@@ -53,3 +53,7 @@ quiz_app.db
 *.db
 *.sqlite
 *.sqlite3
+
+# Ignore constants and data folders
+src/lib/constants/
+data/

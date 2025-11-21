@@ -272,10 +272,8 @@ class CSVImportService {
             throw error;
         }
         if (!subject) {
-            const classMatch = subjectCode.match(/^(SS2|JSS3|BASIC5)_/);
-            const classLevel = classMatch
-                ? classMatch[1]
-                : "SS2";
+            const classMatch = subjectCode.match(/^(SS1|SS2|SS3|JSS1|JSS2|JSS3|BASIC1|BASIC2|BASIC3|BASIC4|BASIC5)_/);
+            const classLevel = classMatch?.[1] || "SS2";
             const subjectName = (0, students_js_1.generateSubjectName)(subjectCode);
             const subjectData = {
                 id: (0, uuid_1.v4)(),

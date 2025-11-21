@@ -2,13 +2,16 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.localSchema = exports.syncTimestampsTable = exports.syncLogTable = exports.quizAttemptsTable = exports.questionsTable = exports.subjectsTable = exports.usersTable = void 0;
 const sqlite_core_1 = require("drizzle-orm/sqlite-core");
+const class_enum_js_1 = require("../constants/class-enum.js");
 // SQLite Schema (Local Database)
 exports.usersTable = (0, sqlite_core_1.sqliteTable)("users", {
     id: (0, sqlite_core_1.text)("id").primaryKey(),
     name: (0, sqlite_core_1.text)("name").notNull(),
     studentCode: (0, sqlite_core_1.text)("student_code").unique().notNull(),
     passwordHash: (0, sqlite_core_1.text)("password_hash").notNull(),
-    class: (0, sqlite_core_1.text)("class", { enum: ["SS2", "JSS3", "BASIC5"] }).notNull(),
+    class: (0, sqlite_core_1.text)("class", {
+        enum: class_enum_js_1.CLASS_VALUES,
+    }).notNull(),
     gender: (0, sqlite_core_1.text)("gender", { enum: ["MALE", "FEMALE"] }).notNull(),
     createdAt: (0, sqlite_core_1.text)("created_at").notNull(),
     updatedAt: (0, sqlite_core_1.text)("updated_at").notNull(),
@@ -21,7 +24,9 @@ exports.subjectsTable = (0, sqlite_core_1.sqliteTable)("subjects", {
     name: (0, sqlite_core_1.text)("name").notNull(),
     subjectCode: (0, sqlite_core_1.text)("subject_code").unique().notNull(),
     description: (0, sqlite_core_1.text)("description"),
-    class: (0, sqlite_core_1.text)("class", { enum: ["SS2", "JSS3", "BASIC5"] }).notNull(),
+    class: (0, sqlite_core_1.text)("class", {
+        enum: class_enum_js_1.CLASS_VALUES,
+    }).notNull(),
     totalQuestions: (0, sqlite_core_1.integer)("total_questions").default(0),
     createdAt: (0, sqlite_core_1.text)("created_at").notNull(),
     updatedAt: (0, sqlite_core_1.text)("updated_at").notNull(),

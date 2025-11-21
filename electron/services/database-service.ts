@@ -52,11 +52,9 @@ export class MainDatabaseService {
       await this.localDb.initialize();
       console.log("Main process: Local database service initialized");
 
-      // (optional - for sync functionality)
       try {
         if (process.env.NEON_DATABASE_URL) {
           this.remoteDb = RemoteDatabaseService.getInstance();
-          console.log({ sent: this.remoteDb });
           await this.remoteDb.initialize(process.env.NEON_DATABASE_URL);
           console.log("Main process: Remote database service initialized");
         }

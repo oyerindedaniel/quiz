@@ -2,13 +2,19 @@
 /**
  * Student data constants for quiz application
  * Contains class lists and subject information for seeding
+ *
+ * This file merges both old and new student data:
+ * - Old students: Original student lists (BASIC5_STUDENTS, SS2_STUDENTS, JSS3_STUDENTS)
+ * - New students: Updated student lists with "NEW_" prefix in student codes to avoid clashes
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ALL_SUBJECTS = exports.ALL_STUDENTS = exports.SS2_SUBJECTS = exports.JSS3_SUBJECTS = exports.BASIC5_SUBJECTS = exports.SUBJECT_ABBREVIATIONS = exports.JSS3_STUDENTS = exports.SS2_STUDENTS = exports.BASIC5_STUDENTS = void 0;
+exports.ALL_SUBJECTS = exports.ALL_STUDENTS = exports.SS2_SUBJECTS = exports.JSS3_SUBJECTS = exports.BASIC5_SUBJECTS = exports.BASIC_SUBJECTS = exports.SS_SUBJECTS = exports.JSS_SUBJECTS = exports.SUBJECT_ABBREVIATIONS = exports.JSS3_STUDENTS = exports.SS2_STUDENTS = exports.BASIC5_STUDENTS = void 0;
 exports.generateStudentCodes = generateStudentCodes;
 exports.getSubjectsForClass = getSubjectsForClass;
 exports.generateSubjectName = generateSubjectName;
 exports.generateSubjectCodes = generateSubjectCodes;
+// Import new student lists from new-students.ts
+const new_students_js_1 = require("./new-students.js");
 /**
  * BASIC 5 Class Student List
  */
@@ -73,127 +79,135 @@ exports.JSS3_STUDENTS = [
 ];
 /**
  * Generate student codes with class prefix
+ * Merges both old and new student lists
  */
 function generateStudentCodes() {
     const allStudents = [];
-    // Generate BASIC5 student codes
+    // Generate OLD BASIC5 student codes (original data)
     exports.BASIC5_STUDENTS.forEach((student, index) => {
         allStudents.push({
             ...student,
-            studentCode: `BASIC5_STU_${String(index + 1).padStart(3, "0")}`, // BASIC5_STU_001, BASIC5_STU_002, etc.
+            studentCode: `BASIC5_STU_${String(index + 1).padStart(3, "0")}`,
         });
     });
-    // Generate SS2 student codes
+    // Generate OLD SS2 student codes (original data)
     exports.SS2_STUDENTS.forEach((student, index) => {
         allStudents.push({
             ...student,
-            studentCode: `SS2_STU_${String(index + 1).padStart(3, "0")}`, // SS2_STU_001, SS2_STU_002, etc.
+            studentCode: `SS2_STU_${String(index + 1).padStart(3, "0")}`,
         });
     });
-    // Generate JSS3 student codes
+    // Generate OLD JSS3 student codes (original data)
     exports.JSS3_STUDENTS.forEach((student, index) => {
         allStudents.push({
             ...student,
-            studentCode: `JSS3_STU_${String(index + 1).padStart(3, "0")}`, // JSS3_STU_001, JSS3_STU_002, etc.
+            studentCode: `JSS3_STU_${String(index + 1).padStart(3, "0")}`,
+        });
+    });
+    // Generate NEW student codes with "NEW_" prefix to avoid clashes
+    new_students_js_1.BASIC5_STUDENTS.forEach((student, index) => {
+        allStudents.push({
+            ...student,
+            studentCode: `NEW_BASIC5_STU_${String(index + 1).padStart(3, "0")}`,
+        });
+    });
+    new_students_js_1.SS2_STUDENTS.forEach((student, index) => {
+        allStudents.push({
+            ...student,
+            studentCode: `NEW_SS2_STU_${String(index + 1).padStart(3, "0")}`,
+        });
+    });
+    new_students_js_1.SS3_STUDENTS.forEach((student, index) => {
+        allStudents.push({
+            ...student,
+            studentCode: `NEW_SS3_STU_${String(index + 1).padStart(3, "0")}`,
+        });
+    });
+    new_students_js_1.SS1_STUDENTS.forEach((student, index) => {
+        allStudents.push({
+            ...student,
+            studentCode: `NEW_SS1_STU_${String(index + 1).padStart(3, "0")}`,
+        });
+    });
+    new_students_js_1.JSS3_STUDENTS.forEach((student, index) => {
+        allStudents.push({
+            ...student,
+            studentCode: `NEW_JSS3_STU_${String(index + 1).padStart(3, "0")}`,
+        });
+    });
+    new_students_js_1.BASIC4_STUDENTS.forEach((student, index) => {
+        allStudents.push({
+            ...student,
+            studentCode: `NEW_BASIC4_STU_${String(index + 1).padStart(3, "0")}`,
+        });
+    });
+    new_students_js_1.JSS1_STUDENTS.forEach((student, index) => {
+        allStudents.push({
+            ...student,
+            studentCode: `NEW_JSS1_STU_${String(index + 1).padStart(3, "0")}`,
+        });
+    });
+    new_students_js_1.JSS2_STUDENTS.forEach((student, index) => {
+        allStudents.push({
+            ...student,
+            studentCode: `NEW_JSS2_STU_${String(index + 1).padStart(3, "0")}`,
         });
     });
     return allStudents;
 }
 /**
- * Centralized subject name
+ * Centralized subject abbreviations
+ * Merged from both old and new student data
  */
 exports.SUBJECT_ABBREVIATIONS = {
-    MATHEMATICS: "MATH",
-    "ENGLISH LANGUAGE": "ENG",
-    "BASIC SCIENCE": "BSC",
-    "SOCIAL STUDIES": "SST",
-    YORUBA: "YOR",
-    "BASIC TECHNOLOGY": "TECH",
-    HISTORY: "HIST",
-    "AGRICULTURAL SCIENCE": "AGRIC",
-    "PHYSICAL AND HEALTH EDUCATION": "PHE",
-    "CULTURAL AND CREATIVE ART": "CCA",
-    "CHRISTIAN RELIGIOUS STUDIES": "CRS",
-    MUSIC: "MUSIC",
-    "BUSINESS STUDIES": "BUSINESS",
-    "CIVIC EDUCATION": "CIVIC",
-    "COMPUTER SCIENCE": "COMP",
-    "HOME ECONOMICS": "HOME",
-    FRENCH: "FRENCH",
-    BIOLOGY: "BIO",
-    CHEMISTRY: "CHEM",
-    PHYSICS: "PHY",
-    "ANIMAL HUSBANDRY": "ANI",
-    GEOGRAPHY: "GEO",
-    ECONOMICS: "ECON",
-    LITERATURE: "LIT",
-    "FURTHER MATHS": "FURTMATH",
-    GOVERNMENT: "GOV",
+    ...new_students_js_1.SUBJECT_ABBREVIATIONS,
 };
 /**
- * Core subjects for BASIC5 class
+ * Subjects for JSS classes (JSS1, JSS2, JSS3)
  */
-exports.BASIC5_SUBJECTS = [
-    "MATHEMATICS",
-    "ENGLISH LANGUAGE",
-    "BASIC SCIENCE",
-    "SOCIAL STUDIES",
-    "YORUBA",
-];
+exports.JSS_SUBJECTS = new_students_js_1.JSS_SUBJECTS;
 /**
- * Subjects for JSS3 class
+ * Subjects for SS classes (SS1, SS2, SS3)
  */
-exports.JSS3_SUBJECTS = [
-    "MATHEMATICS",
-    "ENGLISH LANGUAGE",
-    "BASIC SCIENCE",
-    "BASIC TECHNOLOGY",
-    "HISTORY",
-    "AGRICULTURAL SCIENCE",
-    "PHYSICAL AND HEALTH EDUCATION",
-    "CULTURAL AND CREATIVE ART",
-    "CHRISTIAN RELIGIOUS STUDIES",
-    "YORUBA",
-    "MUSIC",
-    "BUSINESS STUDIES",
-    "CIVIC EDUCATION",
-    "SOCIAL STUDIES",
-    "COMPUTER SCIENCE",
-    "HOME ECONOMICS",
-    "FRENCH",
-];
+exports.SS_SUBJECTS = new_students_js_1.SS_SUBJECTS;
 /**
- * Subjects for SS2 class
+ * Subjects for BASIC classes (BASIC1, BASIC2, BASIC3, BASIC4, BASIC5)
  */
-exports.SS2_SUBJECTS = [
-    "BIOLOGY",
-    "CHEMISTRY",
-    "PHYSICS",
-    "ANIMAL HUSBANDRY",
-    "AGRICULTURAL SCIENCE",
-    "COMPUTER SCIENCE",
-    "CIVIC EDUCATION",
-    "GEOGRAPHY",
-    "ECONOMICS",
-    "LITERATURE",
-    "FURTHER MATHS",
-    "MATHEMATICS",
-    "ENGLISH LANGUAGE",
-    "GOVERNMENT",
-    "YORUBA",
-    "CHRISTIAN RELIGIOUS STUDIES",
-];
+exports.BASIC_SUBJECTS = new_students_js_1.BASIC_SUBJECTS;
+/**
+ * Legacy subject lists (kept for backward compatibility)
+ */
+exports.BASIC5_SUBJECTS = new_students_js_1.BASIC_SUBJECTS;
+exports.JSS3_SUBJECTS = new_students_js_1.JSS_SUBJECTS;
+exports.SS2_SUBJECTS = new_students_js_1.SS_SUBJECTS;
 /**
  * Get subjects for a specific class
  */
 function getSubjectsForClass(cls) {
+    // SS classes
+    if (cls === "SS1" || cls === "SS2" || cls === "SS3") {
+        return exports.SS_SUBJECTS;
+    }
+    // JSS classes
+    if (cls === "JSS1" || cls === "JSS2" || cls === "JSS3") {
+        return exports.JSS_SUBJECTS;
+    }
+    // BASIC classes (including BASIC1, BASIC2, BASIC3)
+    if (cls === "BASIC1" ||
+        cls === "BASIC2" ||
+        cls === "BASIC3" ||
+        cls === "BASIC4" ||
+        cls === "BASIC5") {
+        return exports.BASIC_SUBJECTS;
+    }
+    // Fallback for legacy enum values
     switch (cls) {
         case "BASIC5":
-            return exports.BASIC5_SUBJECTS;
+            return exports.BASIC_SUBJECTS;
         case "JSS3":
-            return exports.JSS3_SUBJECTS;
+            return exports.JSS_SUBJECTS;
         case "SS2":
-            return exports.SS2_SUBJECTS;
+            return exports.SS_SUBJECTS;
         default:
             return [];
     }
@@ -215,10 +229,24 @@ function generateSubjectName(subjectCode) {
 }
 /**
  * Generate subject codes with class prefix
+ * Includes all classes: SS1, SS2, SS3, JSS1, JSS2, JSS3, BASIC1, BASIC2, BASIC3, BASIC4, BASIC5
  */
 function generateSubjectCodes() {
     const subjects = [];
-    const classes = ["BASIC5", "JSS3", "SS2"];
+    // Use all classes from the enum
+    const classes = [
+        "BASIC1",
+        "BASIC2",
+        "BASIC3",
+        "BASIC4",
+        "BASIC5",
+        "JSS1",
+        "JSS2",
+        "JSS3",
+        "SS1",
+        "SS2",
+        "SS3",
+    ];
     classes.forEach((cls) => {
         const classSubjects = getSubjectsForClass(cls);
         classSubjects.forEach((subject) => {
