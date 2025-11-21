@@ -148,7 +148,6 @@ export function LoginForm({ onSuccess, onError }: LoginFormProps) {
   return (
     <div className="w-full max-w-lg mx-auto">
       <div className="bg-white rounded-lg border border-brand-200 p-8 space-y-6 font-sans">
-        {/* Header */}
         <div className="space-y-3 text-center">
           <div className="w-16 h-16 bg-brand-600 rounded-xl mx-auto flex items-center justify-center">
             <GraduationCap className="h-8 w-8 text-white" />
