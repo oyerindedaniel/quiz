@@ -57,3 +57,6 @@ quiz_app.db
 # Ignore constants and data folders
 src/lib/constants/
 data/
+
+docs/
+migrations/
