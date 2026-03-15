@@ -32,52 +32,68 @@ export class UserSeedingService {
   }
 
   /**
-   * Seed users from CSV data
+   * UPSERT users — creates if missing, updates passwordHash if exists
    */
-  async seedUsersFromCSV(csvData: string): Promise<SeedResult> {
+  async seedUsersFromCSV(
+    csvData: string
+  ): Promise<SeedResult & { updated?: number }> {
     const users = this.parseUserCSV(csvData);
-    const results: SeedResult = { created: 0, skipped: 0, errors: [] };
+    const results = { created: 0, updated: 0, errors: [] } as any;
 
     for (const userData of users) {
       try {
-        const existing = this.isRemote
-          ? await this.remoteDb.findUserByStudentCode(userData.studentCode)
-          : await this.localDb.findUserByStudentCode(userData.studentCode);
-        if (existing) {
-          results.skipped++;
-          continue;
-        }
-
         const passwordHash = await bcrypt.hash(userData.pin, 10);
 
-        await (this.isRemote
-          ? this.remoteDb.createUser({
+        if (this.isRemote) {
+          // ─────── REMOTE (Neon) ───────
+          const existing = await this.remoteDb.findUserByStudentCode(
+            userData.studentCode
+          );
+
+          if (existing) {
+            // UPDATE only the password (and updatedAt via trigger or manually)
+            await this.remoteDb.updateUser(existing.id, { passwordHash });
+            results.updated++;
+          } else {
+            // CREATE full user
+            await this.remoteDb.createUser({
               id: this.generateUUID(),
               name: userData.name,
               studentCode: userData.studentCode,
               passwordHash,
               class: userData.class,
               gender: userData.gender,
-            })
-          : this.localDb.createUser({
+            });
+            results.created++;
+          }
+        } else {
+          const existing = await this.localDb.findUserByStudentCode(
+            userData.studentCode
+          );
+
+          if (existing) {
+            await this.localDb.updateUser(existing.id, { passwordHash });
+            results.updated++;
+          } else {
+            await this.localDb.createUser({
               id: generateUUID(),
               name: userData.name,
               studentCode: userData.studentCode,
               passwordHash,
               class: userData.class,
               gender: userData.gender,
-            }));
-
-        results.created++;
+            });
+            results.created++;
+          }
+        }
       } catch (error) {
-        results.errors.push(
-          `Failed to create user ${userData.studentCode}: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`
-        );
+        results.errors.push(`Failed ${userData.studentCode}: ${error}`);
       }
     }
 
+    console.log(
+      `Seeding complete → Created: ${results.created} | Updated: ${results.updated} | Errors: ${results.errors.length}`
+    );
     return results;
   }
 
@@ -90,6 +106,8 @@ export class UserSeedingService {
     const studentsWithPins: UserSeedData[] = ALL_STUDENTS.map(
       (student, index) => {
         const pin = generateStudentPin(index);
+
+        console.log({ pin, student: student.studentCode });
 
         return {
           name: student.name,
