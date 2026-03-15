@@ -83,6 +83,8 @@ export function LoginForm({ onSuccess, onError }: LoginFormProps) {
         formData.pin.trim()
       );
 
+      console.log({ result });
+
       if (result.success) {
         if (formData.timeLimit > 0 && result.user && result.subject) {
           try {

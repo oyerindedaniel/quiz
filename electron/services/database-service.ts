@@ -331,9 +331,12 @@ export class MainDatabaseService {
   ): Promise<AuthResult> {
     try {
       const user = await this.localDb.findUserByStudentCode(studentCode);
+
       if (!user) {
         return { success: false, error: "Invalid student code" };
       }
+
+      console.log(user);
 
       const isValidPin = await bcrypt.compare(pin, user.passwordHash);
       if (!isValidPin) {
@@ -430,7 +433,7 @@ export class MainDatabaseService {
   ): Promise<AdminAuthResult> {
     try {
       if (!this.remoteDb || !this.remoteDb.isConnected()) {
-        console.log({ dhhd: process.env.NEON_DATABASE_URL });
+        console.log({ DB_URL: process.env.NEON_DATABASE_URL });
         return {
           success: false,
           error: "Remote authentication service unavailable",

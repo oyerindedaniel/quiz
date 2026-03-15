@@ -86,14 +86,26 @@ export class CSVImportService {
     }
 
     const headers = this.parseCSVLine(lines[0]);
+
+    const hasOptionE = headers.includes("Option E");
+    const hasOptionC = headers.includes("Option C");
+
     const requiredHeaders = [
       "Question Text",
       "Option A",
       "Option B",
-      "Option C",
-      "Option D",
       "Correct Answer",
     ];
+
+    if (!hasOptionC && !hasOptionE) {
+      requiredHeaders.push("Option C", "Option D");
+    } else if (hasOptionE && !hasOptionC) {
+      // Special case: A, B, D, E format (Yoruba)
+      requiredHeaders.push("Option D");
+    } else {
+      // Normal case: A, B, C, D (and optionally E)
+      requiredHeaders.push("Option C", "Option D");
+    }
 
     for (const required of requiredHeaders) {
       if (!headers.includes(required)) {
@@ -209,7 +221,9 @@ export class CSVImportService {
         "Question Text": values[headers.indexOf("Question Text")] || "",
         "Option A": values[headers.indexOf("Option A")] || "",
         "Option B": values[headers.indexOf("Option B")] || "",
-        "Option C": values[headers.indexOf("Option C")] || "",
+        "Option C": headers.includes("Option C")
+          ? values[headers.indexOf("Option C")] || ""
+          : "",
         "Option D": values[headers.indexOf("Option D")] || "",
         "Correct Answer": values[headers.indexOf("Correct Answer")] || "",
         "Question Order":
@@ -600,13 +614,23 @@ export class CSVImportService {
    * Validate regular question data
    */
   private validateRegularQuestion(row: CSVRow): void {
+    const hasOptionE = row["Option E"]?.trim();
+    const hasOptionC = row["Option C"]?.trim();
+
+    // Required fields depend on which options are present
     const requiredFields: (keyof CSVRow)[] = [
       "Option A",
       "Option B",
-      "Option C",
-      "Option D",
       "Correct Answer",
     ];
+
+    // If we have Option E but no Option C, we're in A,B,D,E format (Yoruba)
+    if (hasOptionE && !hasOptionC) {
+      requiredFields.push("Option D");
+    } else {
+      // Normal format requires C and D
+      requiredFields.push("Option C", "Option D");
+    }
 
     for (const field of requiredFields) {
       if (!row[field]?.trim()) {
@@ -615,18 +639,17 @@ export class CSVImportService {
     }
 
     const correctAnswer = row["Correct Answer"].toUpperCase().trim();
-    const hasOptionE = row["Option E"]?.trim();
 
-    const validAnswers = hasOptionE
-      ? ["A", "B", "C", "D", "E"]
-      : ["A", "B", "C", "D"];
+    // Valid answers depend on format
+    const validAnswers =
+      hasOptionE && !hasOptionC
+        ? ["A", "B", "D", "E"] // Yoruba format
+        : hasOptionE
+        ? ["A", "B", "C", "D", "E"] // Full format with E
+        : ["A", "B", "C", "D"]; // Standard format
 
     if (!validAnswers.includes(correctAnswer)) {
-      throw new Error(
-        `Correct Answer must be ${validAnswers.join(", ")}${
-          hasOptionE ? "" : ". Add Option E to use answer E"
-        }`
-      );
+      throw new Error(`Correct Answer must be ${validAnswers.join(", ")}`);
     }
   }
 
