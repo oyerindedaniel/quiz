@@ -259,6 +259,8 @@ export interface SubjectSeedData {
 export interface SeedResult {
   created: number;
   skipped: number;
+  updated: number;
+  existing: number;
   errors: string[];
 }
 

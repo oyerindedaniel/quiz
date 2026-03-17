@@ -35,7 +35,7 @@ export class RemoteDatabaseService {
   private db: NodePgDatabase<typeof remoteSchema> | null = null;
   private neonManager: NeonManager | null = null;
 
-  private constructor() {}
+  private constructor() { }
 
   public static getInstance(): RemoteDatabaseService {
     if (!RemoteDatabaseService.instance) {
@@ -496,9 +496,11 @@ export class RemoteDatabaseService {
       }
 
       return { success: true, created, updated };
-    } catch (error) {
+    } catch (error: any) {
+      const cause = error?.cause?.message || error?.cause || "";
+      const shortMsg = cause || (error?.message || "").substring(0, 200);
+      console.error("❌ Failed to bulk upsert questions:", shortMsg);
       const message = error instanceof Error ? error.message : String(error);
-      console.error("❌ Failed to bulk upsert questions:", message);
       return {
         success: false,
         created: 0,
@@ -1213,8 +1215,8 @@ export class RemoteDatabaseService {
         averageScore:
           scores.length > 0
             ? Math.round(
-                scores.reduce((sum, score) => sum + score, 0) / scores.length
-              )
+              scores.reduce((sum, score) => sum + score, 0) / scores.length
+            )
             : 0,
       };
     });
@@ -1369,7 +1371,7 @@ export class RemoteDatabaseService {
         subjectName,
         averageScore: Math.round(
           stats.scores.reduce((sum, score) => sum + score, 0) /
-            stats.scores.length
+          stats.scores.length
         ),
         totalAttempts: stats.count,
       }))
@@ -1381,7 +1383,7 @@ export class RemoteDatabaseService {
         studentCode: stats.code,
         averageScore: Math.round(
           stats.scores.reduce((sum, score) => sum + score, 0) /
-            stats.scores.length
+          stats.scores.length
         ),
         totalAttempts: stats.scores.length,
       }))

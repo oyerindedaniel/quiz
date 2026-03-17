@@ -44,7 +44,7 @@ async function main() {
     console.log("\n📊 User Seeding Results:");
     console.log("=========================");
     console.log(`   ✅ Created: ${userResults.users.created}`);
-    console.log(`   ⏭️  Skipped: ${userResults.users.skipped}`);
+    console.log(`   ⏭️  Skipped: ${userResults.users.updated}`);
     console.log(`   ❌ Errors:  ${userResults.users.errors.length}`);
 
     if (userResults.users.errors.length > 0) {

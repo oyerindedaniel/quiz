@@ -433,7 +433,6 @@ export class MainDatabaseService {
   ): Promise<AdminAuthResult> {
     try {
       if (!this.remoteDb || !this.remoteDb.isConnected()) {
-        console.log({ DB_URL: process.env.NEON_DATABASE_URL });
         return {
           success: false,
           error: "Remote authentication service unavailable",
@@ -669,8 +668,7 @@ export class MainDatabaseService {
     } catch (error) {
       console.error("Remote student creation error:", error);
       throw new Error(
-        `Failed to create student: ${
-          error instanceof Error ? error.message : "Unknown error"
+        `Failed to create student: ${error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -723,8 +721,7 @@ export class MainDatabaseService {
           targetSubjectCodes.includes(q.subjectCode)
         );
         console.log(
-          `Filtered to ${
-            filteredQuestions.length
+          `Filtered to ${filteredQuestions.length
           } questions for subjects: ${targetSubjectCodes.join(", ")}`
         );
       }
@@ -859,8 +856,7 @@ export class MainDatabaseService {
             }
 
             console.log(
-              `Successfully synced ${
-                questionsToCreate.length + questionsToUpdate.length
+              `Successfully synced ${questionsToCreate.length + questionsToUpdate.length
               } questions for ${subjectCode}`
             );
           } catch (transactionError) {
@@ -1297,8 +1293,7 @@ export class MainDatabaseService {
 
           totalCreated += chunk.length;
           console.log(
-            `Created user chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${
-              chunk.length
+            `Created user chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${chunk.length
             } users (Total: ${totalCreated}/${usersToCreate.length})`
           );
         }
@@ -1319,8 +1314,7 @@ export class MainDatabaseService {
 
           totalUpdated += chunk.length;
           console.log(
-            `Updated user chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${
-              chunk.length
+            `Updated user chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${chunk.length
             } users (Total: ${totalUpdated}/${usersToUpdate.length})`
           );
         }

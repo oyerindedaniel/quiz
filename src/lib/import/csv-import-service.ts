@@ -67,8 +67,7 @@ export class CSVImportService {
       return results;
     } catch (error) {
       results.errors.push(
-        `Import failed: ${
-          error instanceof Error ? error.message : "Unknown error"
+        `Import failed: ${error instanceof Error ? error.message : "Unknown error"
         }`
       );
       return results;
@@ -167,8 +166,7 @@ export class CSVImportService {
             isMultilineContent = true;
           } else {
             console.warn(
-              `Row ${i + 1}: Column count mismatch (${values.length} vs ${
-                headers.length
+              `Row ${i + 1}: Column count mismatch (${values.length} vs ${headers.length
               }), trying to fix malformed CSV line`
             );
 
@@ -190,15 +188,13 @@ export class CSVImportService {
           }
         } else {
           console.warn(
-            `Row ${i + 1}: Too many columns (${values.length} vs ${
-              headers.length
+            `Row ${i + 1}: Too many columns (${values.length} vs ${headers.length
             }), skipping`
           );
         }
       } catch (error) {
         console.warn(
-          `Row ${i + 1}: Parse error - ${
-            error instanceof Error ? error.message : "Unknown error"
+          `Row ${i + 1}: Parse error - ${error instanceof Error ? error.message : "Unknown error"
           }`
         );
       }
@@ -226,9 +222,7 @@ export class CSVImportService {
           : "",
         "Option D": values[headers.indexOf("Option D")] || "",
         "Correct Answer": values[headers.indexOf("Correct Answer")] || "",
-        "Question Order":
-          values[headers.indexOf("Question Order")] ||
-          (rowIndex + 1).toString(),
+        "Question Order": (rowIndex + 1).toString(),
       };
 
       // Add Option E if it exists in headers
@@ -471,15 +465,7 @@ export class CSVImportService {
           results.questions.regular++;
         }
 
-        // TODO: passage, header, image should not have a question order
-        let questionOrder: number;
-        if (row["Question Order"] && row["Question Order"].trim()) {
-          questionOrder = parseInt(row["Question Order"]);
-        } else {
-          // For special items (passage/header/image), uses a high number to sort them properly
-          // We'll use row index + 1000 to ensure they appear in the right sequence
-          questionOrder = results.processed + 1000;
-        }
+        const questionOrder = parseInt(row["Question Order"]);
 
         if (
           questionType === "passage" ||
@@ -521,22 +507,26 @@ export class CSVImportService {
           });
         }
 
-        results.successful++;
       } catch (error) {
         results.failed++;
         results.errors.push(
-          `Row ${results.processed}: ${
-            error instanceof Error ? error.message : "Unknown error"
+          `Row ${results.processed}: ${error instanceof Error ? error.message : "Unknown error"
           }`
         );
       }
     }
 
     if (questionsToCreate.length > 0) {
-      await this.bulkCreateQuestions(questionsToCreate);
-      console.log(
-        `Bulk created ${questionsToCreate.length} questions for subject ${subjectCode}`
-      );
+      try {
+        await this.bulkCreateQuestions(questionsToCreate);
+        results.successful += questionsToCreate.length;
+        console.log(
+          `Bulk created ${questionsToCreate.length} questions for subject ${subjectCode}`
+        );
+      } catch (error) {
+        results.failed += questionsToCreate.length;
+        throw error;
+      }
     }
   }
 
@@ -548,9 +538,12 @@ export class CSVImportService {
   ): Promise<void> {
     try {
       if (this.isRemote) {
-        await this.remoteDb.bulkUpsertQuestions(questions);
+        const result = await this.remoteDb.bulkUpsertQuestions(questions);
+        if (!result.success) {
+          throw new Error(result.error || "Unknown bulk upsert error");
+        }
         console.log(
-          `CSVImportService: Successfully bulk upserted ${questions.length} questions in remote database`
+          `CSVImportService: Successfully bulk upserted ${questions.length} questions (created: ${result.created}, updated: ${result.updated})`
         );
       } else {
         await this.ipcDb.bulkCreateQuestions(questions);
@@ -645,8 +638,8 @@ export class CSVImportService {
       hasOptionE && !hasOptionC
         ? ["A", "B", "D", "E"] // Yoruba format
         : hasOptionE
-        ? ["A", "B", "C", "D", "E"] // Full format with E
-        : ["A", "B", "C", "D"]; // Standard format
+          ? ["A", "B", "C", "D", "E"] // Full format with E
+          : ["A", "B", "C", "D"]; // Standard format
 
     if (!validAnswers.includes(correctAnswer)) {
       throw new Error(`Correct Answer must be ${validAnswers.join(", ")}`);
@@ -667,8 +660,7 @@ export class CSVImportService {
       }
     } catch (error) {
       throw new Error(
-        `Failed to read CSV file: ${
-          error instanceof Error ? error.message : "Unknown error"
+        `Failed to read CSV file: ${error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }

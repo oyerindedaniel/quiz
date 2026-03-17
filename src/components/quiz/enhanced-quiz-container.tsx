@@ -188,8 +188,6 @@ export function EnhancedQuizContainer() {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to initialize quiz";
 
-      // console.log("she did crash");
-
       if (
         errorMessage.includes("already completed") ||
         errorMessage.includes("Retakes are not allowed")
@@ -407,7 +405,7 @@ export function EnhancedQuizContainer() {
           index + 1 < state.processedData!.questionItems.length &&
           state.processedData!.questionItems[index + 1].type === "question" &&
           state.processedData!.questionItems[index + 1].question.id ===
-            targetQuestion.question.id
+          targetQuestion.question.id
         ) {
           return true;
         }

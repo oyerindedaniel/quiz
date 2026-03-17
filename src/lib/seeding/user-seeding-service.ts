@@ -36,26 +36,23 @@ export class UserSeedingService {
    */
   async seedUsersFromCSV(
     csvData: string
-  ): Promise<SeedResult & { updated?: number }> {
+  ): Promise<SeedResult> {
     const users = this.parseUserCSV(csvData);
-    const results = { created: 0, updated: 0, errors: [] } as any;
+    const results: SeedResult = { created: 0, skipped: 0, updated: 0, existing: 0, errors: [] };
 
     for (const userData of users) {
       try {
         const passwordHash = await bcrypt.hash(userData.pin, 10);
 
         if (this.isRemote) {
-          // ─────── REMOTE (Neon) ───────
           const existing = await this.remoteDb.findUserByStudentCode(
             userData.studentCode
           );
 
           if (existing) {
-            // UPDATE only the password (and updatedAt via trigger or manually)
             await this.remoteDb.updateUser(existing.id, { passwordHash });
             results.updated++;
           } else {
-            // CREATE full user
             await this.remoteDb.createUser({
               id: this.generateUUID(),
               name: userData.name,
@@ -107,8 +104,6 @@ export class UserSeedingService {
       (student, index) => {
         const pin = generateStudentPin(index);
 
-        console.log({ pin, student: student.studentCode });
-
         return {
           name: student.name,
           studentCode: student.studentCode,
@@ -153,9 +148,11 @@ export class UserSeedingService {
     existing: number;
     errors: string[];
   }> {
-    const result: { created: number; existing: number; errors: string[] } = {
+    const result: SeedResult = {
       created: 0,
       existing: 0,
+      skipped: 0,
+      updated: 0,
       errors: [],
     };
 
@@ -171,19 +168,19 @@ export class UserSeedingService {
 
         await (this.isRemote
           ? this.remoteDb.createSubject({
-              id: uuidv4(),
-              name: subjectData.name,
-              subjectCode: subjectData.subjectCode,
-              description: subjectData.description,
-              class: subjectData.class,
-            })
+            id: uuidv4(),
+            name: subjectData.name,
+            subjectCode: subjectData.subjectCode,
+            description: subjectData.description,
+            class: subjectData.class,
+          })
           : this.localDb.createSubject({
-              id: uuidv4(),
-              name: subjectData.name,
-              subjectCode: subjectData.subjectCode,
-              description: subjectData.description,
-              class: subjectData.class,
-            }));
+            id: uuidv4(),
+            name: subjectData.name,
+            subjectCode: subjectData.subjectCode,
+            description: subjectData.description,
+            class: subjectData.class,
+          }));
 
         result.created++;
       } catch (error) {

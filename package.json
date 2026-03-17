@@ -20,6 +20,8 @@
     "seed:questions": "tsx scripts/seed-questions.ts",
     "seed:remote": "tsx scripts/seed-users.ts && tsx scripts/seed-admin.ts && tsx scripts/seed-questions.ts",
     "generate:csv": "tsx scripts/generate-credentials-csv.ts",
+    "generate:subjects": "tsx scripts/generate-subjects-csv.ts",
+    "generate:all": "pnpm generate:csv && pnpm generate:subjects 2nd",
     "db:generate:neon": "drizzle-kit generate --config=drizzle.config.neon.ts",
     "db:migrate:neon": "drizzle-kit migrate --config=drizzle.config.neon.ts",
     "db:studio:neon": "drizzle-kit studio --config=drizzle.config.neon.ts",

@@ -83,8 +83,6 @@ export function LoginForm({ onSuccess, onError }: LoginFormProps) {
         formData.pin.trim()
       );
 
-      console.log({ result });
-
       if (result.success) {
         if (formData.timeLimit > 0 && result.user && result.subject) {
           try {
@@ -194,7 +192,7 @@ export function LoginForm({ onSuccess, onError }: LoginFormProps) {
                 className={cn(
                   "font-mono",
                   errors.studentCode &&
-                    "border-incorrect-500 focus:border-incorrect-500 bg-incorrect-50"
+                  "border-incorrect-500 focus:border-incorrect-500 bg-incorrect-50"
                 )}
                 disabled={loading}
               />
@@ -220,7 +218,7 @@ export function LoginForm({ onSuccess, onError }: LoginFormProps) {
                 className={cn(
                   "font-mono",
                   errors.subjectCode &&
-                    "border-incorrect-500 focus:border-incorrect-500 bg-incorrect-50"
+                  "border-incorrect-500 focus:border-incorrect-500 bg-incorrect-50"
                 )}
                 disabled={loading}
               />
@@ -246,7 +244,7 @@ export function LoginForm({ onSuccess, onError }: LoginFormProps) {
                   className={cn(
                     "font-mono tracking-widest text-center bg-brand-50 border-brand-200 focus:border-brand-500 focus:ring-brand-200",
                     errors.pin &&
-                      "border-incorrect-500 focus:border-incorrect-500 bg-incorrect-50"
+                    "border-incorrect-500 focus:border-incorrect-500 bg-incorrect-50"
                   )}
                   disabled={loading}
                 />
