@@ -306,9 +306,9 @@ export class RemoteDatabaseService {
         and(
           eq(remoteSchema.questions.subjectId, subjectId),
           eq(remoteSchema.questions.isActive, true),
-          sql`${remoteSchema.questions.text} NOT LIKE '[PASSAGE]%'`,
-          sql`${remoteSchema.questions.text} NOT LIKE '[HEADER]%'`,
-          sql`${remoteSchema.questions.text} NOT LIKE '[IMAGE]%'`
+          sql`${remoteSchema.questions.text} NOT ILIKE '[PASSAGE]%'`,
+          sql`${remoteSchema.questions.text} NOT ILIKE '[HEADER]%'`,
+          sql`${remoteSchema.questions.text} NOT ILIKE '[IMAGE]%'`
         )
       );
 
@@ -405,9 +405,9 @@ export class RemoteDatabaseService {
           eq(remoteSchema.questions.subjectCode, subjectCode),
           eq(remoteSchema.questions.isActive, true),
 
-          sql`${remoteSchema.questions.text} NOT LIKE '[PASSAGE]%'`,
-          sql`${remoteSchema.questions.text} NOT LIKE '[HEADER]%'`,
-          sql`${remoteSchema.questions.text} NOT LIKE '[IMAGE]%'`
+          sql`${remoteSchema.questions.text} NOT ILIKE '[PASSAGE]%'`,
+          sql`${remoteSchema.questions.text} NOT ILIKE '[HEADER]%'`,
+          sql`${remoteSchema.questions.text} NOT ILIKE '[IMAGE]%'`
         )
       );
 

@@ -63,7 +63,7 @@ export class CSVImportService {
 
       await this.processQuestionsInBulk(subjectId, subjectCode, rows, results);
 
-      console.log("CSV Import completed:", results);
+      console.log("\x1b[32mCSV Import completed:\x1b[0m", results);
       return results;
     } catch (error) {
       results.errors.push(
@@ -137,11 +137,9 @@ export class CSVImportService {
 
               currentQuestionText = "";
               isMultilineContent = false;
-              continue;
             }
-          } catch {
-            continue;
-          }
+          } catch (e) {}
+          continue;
         }
 
         const values = this.parseCSVLine(lineContent);
@@ -164,10 +162,11 @@ export class CSVImportService {
           ) {
             currentQuestionText = lineContent;
             isMultilineContent = true;
+            continue;
           } else {
             console.warn(
-              `Row ${i + 1}: Column count mismatch (${values.length} vs ${headers.length
-              }), trying to fix malformed CSV line`
+              `\x1b[33mRow ${i + 1}: Column count mismatch (${values.length} vs ${headers.length
+              }), trying to fix malformed CSV line\x1b[0m`
             );
 
             // Try to fix common CSV issues like unquoted commas in text
@@ -178,24 +177,24 @@ export class CSVImportService {
                 const row = this.createRowFromValues(headers, fixedValues, i);
                 if (row) {
                   rows.push(row);
-                  console.log(`Row ${i + 1}: Successfully fixed and parsed`);
+                  console.log(`\x1b[32mRow ${i + 1}: Successfully fixed and parsed\x1b[0m`);
                   continue;
                 }
               }
             }
 
-            console.warn(`Row ${i + 1}: Could not fix, skipping`);
+            console.warn(`\x1b[31mRow ${i + 1}: Could not fix, skipping\x1b[0m`);
           }
         } else {
           console.warn(
-            `Row ${i + 1}: Too many columns (${values.length} vs ${headers.length
-            }), skipping`
+            `\x1b[33mRow ${i + 1}: Too many columns (${values.length} vs ${headers.length
+            }), skipping\x1b[0m`
           );
         }
       } catch (error) {
         console.warn(
-          `Row ${i + 1}: Parse error - ${error instanceof Error ? error.message : "Unknown error"
-          }`
+          `\x1b[31mRow ${i + 1}: Parse error - ${error instanceof Error ? error.message : "Unknown error"
+          }\x1b[0m`
         );
       }
     }
@@ -521,7 +520,7 @@ export class CSVImportService {
         await this.bulkCreateQuestions(questionsToCreate);
         results.successful += questionsToCreate.length;
         console.log(
-          `Bulk created ${questionsToCreate.length} questions for subject ${subjectCode}`
+          `\x1b[32mBulk created ${questionsToCreate.length} questions for subject ${subjectCode}\x1b[0m`
         );
       } catch (error) {
         results.failed += questionsToCreate.length;
